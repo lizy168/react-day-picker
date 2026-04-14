@@ -3,13 +3,17 @@ import type { Config } from "@docusaurus/types";
 import { themes as prismThemes } from "prism-react-renderer";
 import pkg from "react-day-picker/package.json";
 
+const siteUrl = process.env.SITE_URL || "https://daypicker.dev";
+const baseUrl = process.env.BASE_URL || "/";
+const siteHost = new URL(siteUrl).hostname;
+
 const config: Config = {
   title: "React DayPicker",
   tagline:
     "Date picker component for React. Add date pickers, calendars, and date inputs to your web applications.",
   favicon: "img/favicon.ico",
-  url: "https://daypicker.dev",
-  baseUrl: "/",
+  url: siteUrl,
+  baseUrl,
   organizationName: "gpbl",
   projectName: "react-day-picker",
   trailingSlash: false,
@@ -132,7 +136,7 @@ const config: Config = {
     {
       src: "/q/p/script.js",
       defer: true,
-      "data-domain": "daypicker.dev",
+      "data-domain": siteHost,
       "data-api": "/q/a/event",
     },
   ],

@@ -256,7 +256,7 @@ If you use TypeScript, some types have been deprecated for clarity and shorter n
 + import type { PropsBase } from 'react-day-picker';
 ```
 
-See the source of [types/deprecated.ts](https://github.com/gpbl/react-day-picker/blob/next/src/types/deprecated.ts) for more details.
+These aliases were kept in v9 for migration and are removed in v10. If you need the historical reference list, see the [v9.14.0 `types/deprecated.ts` source](https://github.com/gpbl/react-day-picker/blob/v9.14.0/src/types/deprecated.ts).
 
 <details>
   <summary>**List of Deprecated Types**</summary>
@@ -280,7 +280,7 @@ See the source of [types/deprecated.ts](https://github.com/gpbl/react-day-picker
 | ~`useNavigation`~              | Included in [`useDayPicker`](./api/functions/useDayPicker.md).                                                |
 | ~`useDayRender`~               | Removed. Customize day rendering with the `htmlAttributes` prop in a custom `Day` component.                  |
 | ~`ContextProvidersProps`~      | Not used anymore.                                                                                             |
-| ~`DayLabel`~                   | Use `typeof labelDay` instead.                                                                                |
+| ~`DayLabel`~                   | Use `typeof labelDayButton` instead.                                                                          |
 | ~`NavButtonLabel`~             | Use `typeof labelNext` or `typeof labelPrevious` instead.                                                     |
 | ~`WeekdayLabel`~               | Use `typeof labelWeekday` instead.                                                                            |
 | ~`WeekNumberLabel`~            | Use `typeof labelWeekNumber` instead.                                                                         |
