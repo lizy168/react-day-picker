@@ -7,7 +7,7 @@ type CreateRelease = NonNullable<
 >["createRelease"];
 
 let createGitHubRelease: CreateGitHubReleaseModule["createGitHubRelease"];
-let context: ReturnType<typeof createContext>;
+let releaseContext: ReturnType<typeof createReleaseContext>;
 let fetchRelease: jest.MockedFunction<NonNullable<FetchRelease>>;
 let createRelease: jest.MockedFunction<NonNullable<CreateRelease>>;
 
@@ -16,7 +16,7 @@ beforeAll(async function loadModule() {
 });
 
 beforeEach(function setupTestState() {
-  context = createContext();
+  releaseContext = createReleaseContext();
   fetchRelease = jest.fn(async function fetchExistingRelease(
     _request: Parameters<NonNullable<FetchRelease>>[0],
     _fetchImpl?: Parameters<NonNullable<FetchRelease>>[1],
@@ -34,7 +34,7 @@ beforeEach(function setupTestState() {
   }) as jest.MockedFunction<NonNullable<CreateRelease>>;
 });
 
-function createContext(
+function createReleaseContext(
   overrides: Partial<{
     repository: string;
     token: string;
@@ -66,7 +66,7 @@ function createReleasePayload(
 describe("createGitHubRelease", function describeCreateGitHubRelease() {
   test("it reuses an existing release for the repo version", async function testExistingRelease() {
     await expect(
-      createGitHubRelease(context, { fetchRelease, createRelease }),
+      createGitHubRelease(releaseContext, { fetchRelease, createRelease }),
     ).resolves.toEqual({
       created: false,
       release: createReleasePayload(),
@@ -84,7 +84,7 @@ describe("createGitHubRelease", function describeCreateGitHubRelease() {
     );
 
     await expect(
-      createGitHubRelease(context, { fetchRelease, createRelease }),
+      createGitHubRelease(releaseContext, { fetchRelease, createRelease }),
     ).resolves.toEqual({
       created: true,
       release: createReleasePayload(),
@@ -102,14 +102,14 @@ describe("createGitHubRelease", function describeCreateGitHubRelease() {
   });
 
   test("it creates stable releases without the prerelease flag", async function testStableReleaseFlag() {
-    context.packageVersion = "10.0.0";
+    releaseContext.packageVersion = "10.0.0";
     fetchRelease.mockRejectedValue(
       Object.assign(new Error("GitHub Release v10.0.0 was not found."), {
         status: 404,
       }),
     );
 
-    await createGitHubRelease(context, { fetchRelease, createRelease });
+    await createGitHubRelease(releaseContext, { fetchRelease, createRelease });
 
     expect(createRelease).toHaveBeenCalledWith({
       owner: "gpbl",
@@ -122,10 +122,10 @@ describe("createGitHubRelease", function describeCreateGitHubRelease() {
   });
 
   test("it rejects invalid repository values", async function testInvalidRepository() {
-    context.repository = "react-day-picker";
+    releaseContext.repository = "react-day-picker";
 
     await expect(
-      createGitHubRelease(context, { fetchRelease, createRelease }),
+      createGitHubRelease(releaseContext, { fetchRelease, createRelease }),
     ).rejects.toThrow("Invalid GITHUB_REPOSITORY value: react-day-picker");
   });
 
@@ -133,7 +133,7 @@ describe("createGitHubRelease", function describeCreateGitHubRelease() {
     fetchRelease.mockRejectedValue(new Error("network timeout"));
 
     await expect(
-      createGitHubRelease(context, { fetchRelease, createRelease }),
+      createGitHubRelease(releaseContext, { fetchRelease, createRelease }),
     ).rejects.toThrow("network timeout");
   });
 });

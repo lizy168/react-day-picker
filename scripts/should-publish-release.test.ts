@@ -4,7 +4,7 @@ type PullRequestFetcher = NonNullable<
 >;
 
 let shouldPublishRelease: ShouldPublishModule["shouldPublishRelease"];
-let context: ReturnType<typeof createContext>;
+let publishContext: ReturnType<typeof createShouldPublishContext>;
 let pullRequestFetcher: jest.MockedFunction<PullRequestFetcher>;
 
 beforeAll(async function loadModule() {
@@ -12,7 +12,7 @@ beforeAll(async function loadModule() {
 });
 
 beforeEach(function setupTestState() {
-  context = createContext();
+  publishContext = createShouldPublishContext();
   pullRequestFetcher = jest.fn(async function fetchAssociatedPullRequests(
     _request: Parameters<PullRequestFetcher>[0],
     _fetchImpl?: Parameters<PullRequestFetcher>[1],
@@ -21,7 +21,7 @@ beforeEach(function setupTestState() {
   }) as jest.MockedFunction<PullRequestFetcher>;
 });
 
-function createContext(
+function createShouldPublishContext(
   overrides: Partial<{
     repository: string;
     token: string;
@@ -62,12 +62,12 @@ function createPullRequest(
 describe("shouldPublishRelease", function describeShouldPublishRelease() {
   test("it returns true for the expected merged release PR", async function testReleasePullRequest() {
     await expect(
-      shouldPublishRelease(context, pullRequestFetcher),
+      shouldPublishRelease(publishContext, pullRequestFetcher),
     ).resolves.toBe(true);
   });
 
   test("it looks up pull requests for the pushed commit", async function testLookupRequest() {
-    await shouldPublishRelease(context, pullRequestFetcher);
+    await shouldPublishRelease(publishContext, pullRequestFetcher);
 
     expect(pullRequestFetcher).toHaveBeenCalledWith({
       owner: "gpbl",
@@ -83,15 +83,15 @@ describe("shouldPublishRelease", function describeShouldPublishRelease() {
     ]);
 
     await expect(
-      shouldPublishRelease(context, pullRequestFetcher),
+      shouldPublishRelease(publishContext, pullRequestFetcher),
     ).resolves.toBe(false);
   });
 
   test("it rejects invalid repository values", async function testInvalidRepository() {
-    context.repository = "react-day-picker";
+    publishContext.repository = "react-day-picker";
 
     await expect(
-      shouldPublishRelease(context, pullRequestFetcher),
+      shouldPublishRelease(publishContext, pullRequestFetcher),
     ).rejects.toThrow("Invalid GITHUB_REPOSITORY value: react-day-picker");
   });
 
@@ -101,7 +101,7 @@ describe("shouldPublishRelease", function describeShouldPublishRelease() {
     ]);
 
     await expect(
-      shouldPublishRelease(context, pullRequestFetcher),
+      shouldPublishRelease(publishContext, pullRequestFetcher),
     ).resolves.toBe(false);
   });
 });
