@@ -1,0 +1,182 @@
+import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
+import process from "node:process";
+import { pathToFileURL } from "node:url";
+
+const repoRoot = new URL("../", import.meta.url);
+
+export const packageDirs = [
+  "packages/react-day-picker",
+  "packages/buddhist",
+  "packages/ethiopic",
+  "packages/hebrew",
+  "packages/hijri",
+  "packages/persian",
+] as const;
+
+export interface PackageInfo {
+  name: string;
+  version: string;
+}
+
+export interface UnpublishedPackage {
+  packageDir: string;
+  packageInfo: PackageInfo;
+}
+
+export type ExecFile = (
+  command: string,
+  args: string[],
+  options?: object,
+) => Buffer | string;
+
+export interface PublishPackagesOptions {
+  packages?: readonly string[];
+  execFile?: ExecFile;
+  readPackage?: typeof readPackageInfo;
+}
+
+export function readPackageInfo(
+  packageDir: string,
+  readFile: typeof readFileSync = readFileSync,
+): PackageInfo {
+  const packageJsonPath = new URL(`${packageDir}/package.json`, repoRoot);
+  const packageJson = JSON.parse(readFile(packageJsonPath, "utf8")) as {
+    name: string;
+    version: string;
+  };
+  return {
+    name: packageJson.name,
+    version: packageJson.version,
+  };
+}
+
+export function isPackageVersionMissingError(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  const npmError = error as Error & {
+    status?: number;
+    stderr?: unknown;
+    stdout?: unknown;
+  };
+  const output = [error.message, npmError.stderr, npmError.stdout]
+    .filter(Boolean)
+    .map(String)
+    .join("\n");
+
+  return (
+    npmError.status === 1 &&
+    (output.includes("E404") ||
+      output.includes("404 Not Found") ||
+      output.includes("No matching version found"))
+  );
+}
+
+export function isPackageVersionPublished(
+  packageInfo: PackageInfo,
+  execFile: ExecFile = execFileSync,
+): boolean {
+  try {
+    execFile(
+      "npm",
+      ["view", `${packageInfo.name}@${packageInfo.version}`, "version"],
+      {
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "pipe"],
+      },
+    );
+    return true;
+  } catch (error) {
+    if (isPackageVersionMissingError(error)) {
+      return false;
+    }
+    throw error;
+  }
+}
+
+export function getUnpublishedPackages(
+  options: PublishPackagesOptions = {},
+): UnpublishedPackage[] {
+  const {
+    packages = packageDirs,
+    execFile = execFileSync,
+    readPackage = readPackageInfo,
+  } = options;
+
+  return packages.flatMap((packageDir) => {
+    const packageInfo = readPackage(packageDir);
+    return isPackageVersionPublished(packageInfo, execFile)
+      ? []
+      : [{ packageDir, packageInfo }];
+  });
+}
+
+export function publishPackage(
+  packageDir: string,
+  packageInfo: PackageInfo,
+  tag: string,
+  execFile: ExecFile = execFileSync,
+): void {
+  const publishArgs = ["publish", "--provenance", "--tag", tag];
+  if (packageInfo.name.startsWith("@")) {
+    publishArgs.push("--access", "public");
+  }
+
+  execFile("npm", publishArgs, {
+    cwd: new URL(`../${packageDir}`, import.meta.url),
+    stdio: "inherit",
+  });
+}
+
+export function publishPackages(
+  tag: string,
+  options: PublishPackagesOptions = {},
+): void {
+  if (!tag) {
+    throw new Error("Usage: publish-packages <npm-tag>");
+  }
+
+  const {
+    packages = packageDirs,
+    execFile = execFileSync,
+    readPackage = readPackageInfo,
+  } = options;
+
+  for (const packageDir of packages) {
+    const packageInfo = readPackage(packageDir);
+    if (isPackageVersionPublished(packageInfo, execFile)) {
+      console.log(
+        `Skipping ${packageInfo.name}@${packageInfo.version}; already published.`,
+      );
+      continue;
+    }
+
+    publishPackage(packageDir, packageInfo, tag, execFile);
+  }
+}
+
+export function main(): void {
+  if (process.argv[2] === "--check") {
+    const hasUnpublishedPackages = getUnpublishedPackages().length > 0;
+    console.log(hasUnpublishedPackages ? "true" : "false");
+    return;
+  }
+
+  publishPackages(process.argv[2] || "");
+}
+
+const scriptPath = process.argv[1];
+if (scriptPath && import.meta.url === pathToFileURL(scriptPath).href) {
+  try {
+    main();
+  } catch (error) {
+    if (error instanceof Error) {
+      console.error(error.message);
+    } else {
+      console.error(error);
+    }
+    process.exit(1);
+  }
+}

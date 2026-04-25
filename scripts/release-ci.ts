@@ -1,13 +1,21 @@
 import { execFileSync } from "node:child_process";
 import process from "node:process";
 import { pathToFileURL } from "node:url";
-import { createGitHubRelease } from "./create-github-release.mjs";
 import {
+  type CreateReleaseContext,
+  createGitHubRelease,
+} from "./create-github-release";
+import {
+  type ExecFile,
   getUnpublishedPackages,
+  type PublishPackagesOptions,
   publishPackages,
   readPackageInfo,
-} from "./publish-packages.mjs";
-import { shouldPublishRelease } from "./should-publish-release.mjs";
+} from "./publish-packages";
+import {
+  type ShouldPublishContext,
+  shouldPublishRelease,
+} from "./should-publish-release";
 
 const repoRoot = new URL("../", import.meta.url);
 const mainPackageDir = "packages/react-day-picker";
@@ -21,37 +29,64 @@ const validationCommands = [
   ["check:versions"],
   ["pack:dry-run"],
   ["test:build"],
-];
+] as const;
 
-/**
- * Runs the release automation for a merged Changesets release PR.
- *
- * @param {object} [options] - Test hooks for release automation.
- * @param {NodeJS.ProcessEnv} [options.env=process.env] - Environment variables.
- *   Default is `process.env`
- * @param {typeof execFileSync} [options.execFile=execFileSync] - Command
- *   runner. Default is `execFileSync`
- * @param {typeof readPackageInfo} [options.readPackage=readPackageInfo] -
- *   Package metadata reader. Default is `readPackageInfo`
- * @param {typeof getUnpublishedPackages} [options.getUnpublished=getUnpublishedPackages]
- *   - Registry lookup helper. Default is `getUnpublishedPackages`
- *
- * @param {typeof publishPackages} [options.publish=publishPackages] - Publish
- *   helper. Default is `publishPackages`
- * @param {typeof shouldPublishRelease} [options.shouldPublish=shouldPublishRelease]
- *   - Release PR matcher. Default is `shouldPublishRelease`
- *
- * @param {typeof createGitHubRelease} [options.createRelease=createGitHubRelease]
- *   - GitHub Release helper. Default is `createGitHubRelease`
- *
- * @returns {Promise<{
- *   shouldPublish: boolean;
- *   publishedPackages: boolean;
- *   releaseCreated: boolean;
- * }>}
- *   Result metadata for workflow logging and tests.
- */
-export async function releaseCi(options = {}) {
+type ReleaseCiCreateRelease = (
+  context: CreateReleaseContext,
+  options?: {
+    fetchRelease?: (request: {
+      owner: string;
+      repo: string;
+      tag: string;
+      token: string;
+    }) => Promise<{ html_url: string }>;
+    createRelease?: (request: {
+      owner: string;
+      repo: string;
+      tag: string;
+      token: string;
+      commitSha: string;
+      prerelease: boolean;
+    }) => Promise<{ html_url: string }>;
+  },
+) => Promise<{
+  created: boolean;
+  release: { html_url: string };
+  tag: string;
+}>;
+
+type ReleaseCiShouldPublish = (
+  context: ShouldPublishContext,
+  pullRequestFetcher?: (request: {
+    owner: string;
+    repo: string;
+    commitSha: string;
+    token: string;
+  }) => Promise<
+    {
+      user: { login?: string } | null;
+      base: { ref?: string } | null;
+      head: { ref?: string } | null;
+      merged_at: string | null;
+    }[]
+  >,
+) => Promise<boolean>;
+
+export interface ReleaseCiOptions {
+  env?: NodeJS.ProcessEnv;
+  execFile?: ExecFile;
+  readPackage?: typeof readPackageInfo;
+  getUnpublished?: typeof getUnpublishedPackages;
+  publish?: typeof publishPackages;
+  shouldPublish?: ReleaseCiShouldPublish;
+  createRelease?: ReleaseCiCreateRelease;
+}
+
+export async function releaseCi(options: ReleaseCiOptions = {}): Promise<{
+  shouldPublish: boolean;
+  publishedPackages: boolean;
+  releaseCreated: boolean;
+}> {
   const {
     env = process.env,
     execFile = execFileSync,
@@ -103,12 +138,12 @@ export async function releaseCi(options = {}) {
   const unpublishedPackages = getUnpublished({
     execFile,
     readPackage,
-  });
+  } satisfies PublishPackagesOptions);
   let publishedPackages = false;
 
   if (unpublishedPackages.length > 0) {
     for (const commandArgs of validationCommands) {
-      execFile("pnpm", commandArgs, {
+      execFile("pnpm", [...commandArgs], {
         cwd: repoRoot,
         stdio: "inherit",
       });
@@ -136,12 +171,7 @@ export async function releaseCi(options = {}) {
   };
 }
 
-/**
- * Runs release automation as a CLI program.
- *
- * @returns {Promise<void>} Resolves when release automation has finished.
- */
-export async function main() {
+export async function main(): Promise<void> {
   const result = await releaseCi();
   if (!result.shouldPublish) {
     return;
@@ -160,7 +190,7 @@ export async function main() {
 
 const scriptPath = process.argv[1];
 if (scriptPath && import.meta.url === pathToFileURL(scriptPath).href) {
-  main().catch(function handleError(error) {
+  main().catch((error: unknown) => {
     if (error instanceof Error) {
       console.error(error.message);
     } else {

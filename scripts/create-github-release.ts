@@ -1,22 +1,43 @@
 import process from "node:process";
 import { pathToFileURL } from "node:url";
 
-/**
- * @typedef {object} GitHubRelease
- * @property {string} html_url
- */
+export interface GitHubRelease {
+  html_url: string;
+}
 
-/**
- * Fetches a GitHub Release by tag name.
- *
- * @param {{ owner: string; repo: string; tag: string; token: string }} request
- *   - Release lookup request.
- *
- * @param {typeof fetch} [fetchImpl=fetch] - Fetch implementation used for the
- *   API request. Default is `fetch`
- * @returns {Promise<GitHubRelease>} The matching GitHub Release payload.
- */
-async function fetchReleaseByTag(request, fetchImpl = fetch) {
+export interface CreateReleaseContext {
+  repository: string;
+  token: string;
+  commitSha: string;
+  packageVersion: string;
+}
+
+interface ReleaseLookupRequest {
+  owner: string;
+  repo: string;
+  tag: string;
+  token: string;
+}
+
+interface ReleaseCreateRequest extends ReleaseLookupRequest {
+  commitSha: string;
+  prerelease: boolean;
+}
+
+type FetchRelease = (
+  request: ReleaseLookupRequest,
+  fetchImpl?: typeof fetch,
+) => Promise<GitHubRelease>;
+
+type CreateRelease = (
+  request: ReleaseCreateRequest,
+  fetchImpl?: typeof fetch,
+) => Promise<GitHubRelease>;
+
+async function fetchReleaseByTag(
+  request: ReleaseLookupRequest,
+  fetchImpl = fetch,
+): Promise<GitHubRelease> {
   const { owner, repo, tag, token } = request;
   const response = await fetchImpl(
     `https://api.github.com/repos/${owner}/${repo}/releases/tags/${encodeURIComponent(tag)}`,
@@ -41,27 +62,13 @@ async function fetchReleaseByTag(request, fetchImpl = fetch) {
     );
   }
 
-  return response.json();
+  return response.json() as Promise<GitHubRelease>;
 }
 
-/**
- * Creates a published GitHub Release for the given package version.
- *
- * @param {{
- *   owner: string;
- *   repo: string;
- *   tag: string;
- *   token: string;
- *   commitSha: string;
- *   prerelease: boolean;
- * }} request
- *   - Release creation request.
- *
- * @param {typeof fetch} [fetchImpl=fetch] - Fetch implementation used for the
- *   API request. Default is `fetch`
- * @returns {Promise<GitHubRelease>} The created GitHub Release payload.
- */
-async function createRelease(request, fetchImpl = fetch) {
+async function createRelease(
+  request: ReleaseCreateRequest,
+  fetchImpl = fetch,
+): Promise<GitHubRelease> {
   const { owner, repo, tag, token, commitSha, prerelease } = request;
   const response = await fetchImpl(
     `https://api.github.com/repos/${owner}/${repo}/releases`,
@@ -90,35 +97,20 @@ async function createRelease(request, fetchImpl = fetch) {
     );
   }
 
-  return response.json();
+  return response.json() as Promise<GitHubRelease>;
 }
 
-/**
- * Creates the repo GitHub Release for a published version unless it already
- * exists.
- *
- * @param {{
- *   repository: string;
- *   token: string;
- *   commitSha: string;
- *   packageVersion: string;
- * }} context
- *   - Normalized workflow context.
- *
- * @param {{
- *   fetchRelease?: typeof fetchReleaseByTag;
- *   createRelease?: typeof createRelease;
- * }} [options]
- *   - Test hooks for API requests.
- *
- * @returns {Promise<{
- *   created: boolean;
- *   release: GitHubRelease;
- *   tag: string;
- * }>}
- *   Result metadata for logging and tests.
- */
-export async function createGitHubRelease(context, options = {}) {
+export async function createGitHubRelease(
+  context: CreateReleaseContext,
+  options: {
+    fetchRelease?: FetchRelease;
+    createRelease?: CreateRelease;
+  } = {},
+): Promise<{
+  created: boolean;
+  release: GitHubRelease;
+  tag: string;
+}> {
   const [owner, repo] = context.repository.split("/");
   if (!owner || !repo) {
     throw new Error(`Invalid GITHUB_REPOSITORY value: ${context.repository}`);
@@ -159,13 +151,7 @@ export async function createGitHubRelease(context, options = {}) {
   return { created: true, release: createdRelease, tag };
 }
 
-/**
- * Runs the GitHub Release creation as a CLI program.
- *
- * @returns {Promise<void>} Resolves when the release has been created or
- *   reused.
- */
-export async function main() {
+export async function main(): Promise<void> {
   const repository = process.env.GITHUB_REPOSITORY;
   const token = process.env.GITHUB_TOKEN;
   const commitSha = process.env.GITHUB_SHA;
@@ -184,13 +170,13 @@ export async function main() {
     throw new Error("Missing required environment variable: PACKAGE_VERSION");
   }
 
-  const context = {
+  const result = await createGitHubRelease({
     repository,
     token,
     commitSha,
     packageVersion,
-  };
-  const result = await createGitHubRelease(context);
+  });
+
   if (result.created) {
     console.log(
       `Created GitHub release ${result.tag} at ${result.release.html_url}.`,
@@ -204,7 +190,7 @@ export async function main() {
 
 const scriptPath = process.argv[1];
 if (scriptPath && import.meta.url === pathToFileURL(scriptPath).href) {
-  main().catch(function handleError(error) {
+  main().catch((error: unknown) => {
     if (error instanceof Error) {
       console.error(error.message);
     } else {

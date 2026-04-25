@@ -1,4 +1,4 @@
-type ShouldPublishModule = typeof import("./should-publish-release.mjs");
+type ShouldPublishModule = typeof import("./should-publish-release");
 type PullRequestFetcher = NonNullable<
   Parameters<ShouldPublishModule["shouldPublishRelease"]>[1]
 >;
@@ -8,7 +8,7 @@ let publishContext: ReturnType<typeof createShouldPublishContext>;
 let pullRequestFetcher: jest.MockedFunction<PullRequestFetcher>;
 
 beforeAll(async function loadModule() {
-  ({ shouldPublishRelease } = await import("./should-publish-release.mjs"));
+  ({ shouldPublishRelease } = await import("./should-publish-release"));
 });
 
 beforeEach(function setupTestState() {

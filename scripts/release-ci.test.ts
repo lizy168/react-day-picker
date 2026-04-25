@@ -1,4 +1,4 @@
-type ReleaseCiModule = typeof import("./release-ci.mjs");
+type ReleaseCiModule = typeof import("./release-ci");
 type ReleaseCiOptions = Parameters<ReleaseCiModule["releaseCi"]>[0];
 type ResolvedReleaseCiOptions = Required<NonNullable<ReleaseCiOptions>>;
 
@@ -25,7 +25,7 @@ let createReleaseAutomation: jest.MockedFunction<
 >;
 
 beforeAll(async function loadModule() {
-  ({ releaseCi } = await import("./release-ci.mjs"));
+  ({ releaseCi } = await import("./release-ci"));
 });
 
 beforeEach(function setupReleaseCiTestState() {

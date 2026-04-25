@@ -1,31 +1,38 @@
 import process from "node:process";
 import { pathToFileURL } from "node:url";
 
-/**
- * @typedef {object} AssociatedPullRequest
- * @property {{ login?: string } | null} user
- * @property {{ ref?: string } | null} base
- * @property {{ ref?: string } | null} head
- * @property {string | null} merged_at
- */
+export interface AssociatedPullRequest {
+  user: { login?: string } | null;
+  base: { ref?: string } | null;
+  head: { ref?: string } | null;
+  merged_at: string | null;
+}
 
-/**
- * Fetches pull requests associated with a commit.
- *
- * @param {{
- *   owner: string;
- *   repo: string;
- *   commitSha: string;
- *   token: string;
- * }} request
- *   - Commit lookup request.
- *
- * @param {typeof fetch} [fetchImpl=fetch] - Fetch implementation used for the
- *   API request. Default is `fetch`
- * @returns {Promise<AssociatedPullRequest[]>} Pull requests associated with the
- *   commit.
- */
-async function fetchAssociatedPullRequests(request, fetchImpl = fetch) {
+export interface ShouldPublishContext {
+  repository: string;
+  token: string;
+  commitSha: string;
+  expectedHeadBranch: string;
+  expectedAuthor: string;
+  expectedBaseBranch: string;
+}
+
+interface AssociatedPullRequestRequest {
+  owner: string;
+  repo: string;
+  commitSha: string;
+  token: string;
+}
+
+type PullRequestFetcher = (
+  request: AssociatedPullRequestRequest,
+  fetchImpl?: typeof fetch,
+) => Promise<AssociatedPullRequest[]>;
+
+async function fetchAssociatedPullRequests(
+  request: AssociatedPullRequestRequest,
+  fetchImpl = fetch,
+): Promise<AssociatedPullRequest[]> {
   const { owner, repo, commitSha, token } = request;
   const response = await fetchImpl(
     `https://api.github.com/repos/${owner}/${repo}/commits/${encodeURIComponent(commitSha)}/pulls`,
@@ -44,32 +51,13 @@ async function fetchAssociatedPullRequests(request, fetchImpl = fetch) {
     );
   }
 
-  return response.json();
+  return response.json() as Promise<AssociatedPullRequest[]>;
 }
 
-/**
- * Returns whether the push commit came from the Changesets release PR.
- *
- * @param {{
- *   repository: string;
- *   token: string;
- *   commitSha: string;
- *   expectedHeadBranch: string;
- *   expectedAuthor: string;
- *   expectedBaseBranch: string;
- * }} context
- *   - Normalized workflow context.
- *
- * @param {typeof fetchAssociatedPullRequests} [pullRequestFetcher=fetchAssociatedPullRequests]
- *   - Pull request lookup helper. Default is `fetchAssociatedPullRequests`
- *
- * @returns {Promise<boolean>} True when the commit was introduced by the
- *   expected release PR.
- */
 export async function shouldPublishRelease(
-  context,
-  pullRequestFetcher = fetchAssociatedPullRequests,
-) {
+  context: ShouldPublishContext,
+  pullRequestFetcher: PullRequestFetcher = fetchAssociatedPullRequests,
+): Promise<boolean> {
   const [owner, repo] = context.repository.split("/");
   if (!owner || !repo) {
     throw new Error(`Invalid GITHUB_REPOSITORY value: ${context.repository}`);
@@ -82,7 +70,7 @@ export async function shouldPublishRelease(
     token: context.token,
   });
 
-  return pullRequests.some(function matchesReleasePullRequest(pullRequest) {
+  return pullRequests.some((pullRequest) => {
     return (
       pullRequest.head?.ref === context.expectedHeadBranch &&
       pullRequest.user?.login === context.expectedAuthor &&
@@ -92,12 +80,7 @@ export async function shouldPublishRelease(
   });
 }
 
-/**
- * Runs the release-merge check as a CLI program.
- *
- * @returns {Promise<void>} Resolves when the result has been printed.
- */
-export async function main() {
+export async function main(): Promise<void> {
   const repository = process.env.GITHUB_REPOSITORY;
   const token = process.env.GITHUB_TOKEN;
   const commitSha = process.env.GITHUB_SHA;
@@ -112,7 +95,7 @@ export async function main() {
     throw new Error("Missing required environment variable: GITHUB_SHA");
   }
 
-  const context = {
+  const shouldPublish = await shouldPublishRelease({
     repository,
     token,
     commitSha,
@@ -120,14 +103,14 @@ export async function main() {
       process.env.EXPECTED_PR_BRANCH || "changesets-release/main",
     expectedAuthor: process.env.EXPECTED_PR_AUTHOR || "github-actions[bot]",
     expectedBaseBranch: process.env.EXPECTED_BASE_BRANCH || "main",
-  };
-  const shouldPublish = await shouldPublishRelease(context);
+  });
+
   console.log(shouldPublish ? "true" : "false");
 }
 
 const scriptPath = process.argv[1];
 if (scriptPath && import.meta.url === pathToFileURL(scriptPath).href) {
-  main().catch(function handleError(error) {
+  main().catch((error: unknown) => {
     if (error instanceof Error) {
       console.error(error.message);
     } else {

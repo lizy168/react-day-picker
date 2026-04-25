@@ -1,4 +1,4 @@
-type PublishPackagesModule = typeof import("./publish-packages.mjs");
+type PublishPackagesModule = typeof import("./publish-packages");
 
 type ExecCall = {
   args: string[];
@@ -15,7 +15,7 @@ let consoleLogSpy: jest.SpiedFunction<typeof console.log>;
 
 beforeAll(async function loadModule() {
   ({ isPackageVersionMissingError, getUnpublishedPackages, publishPackages } =
-    await import("./publish-packages.mjs"));
+    await import("./publish-packages"));
 });
 
 beforeEach(function setupConsoleSpy() {
@@ -176,7 +176,7 @@ describe("publishPackages", function describePublishPackages() {
 
   test("it requires an npm tag", function testMissingTag() {
     expect(() => publishPackages("")).toThrow(
-      "Usage: node ./scripts/publish-packages.mjs <npm-tag>",
+      "Usage: publish-packages <npm-tag>",
     );
   });
 });

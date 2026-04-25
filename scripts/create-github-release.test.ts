@@ -1,4 +1,4 @@
-type CreateGitHubReleaseModule = typeof import("./create-github-release.mjs");
+type CreateGitHubReleaseModule = typeof import("./create-github-release");
 type FetchRelease = NonNullable<
   Parameters<CreateGitHubReleaseModule["createGitHubRelease"]>[1]
 >["fetchRelease"];
@@ -12,7 +12,7 @@ let fetchRelease: jest.MockedFunction<NonNullable<FetchRelease>>;
 let createRelease: jest.MockedFunction<NonNullable<CreateRelease>>;
 
 beforeAll(async function loadModule() {
-  ({ createGitHubRelease } = await import("./create-github-release.mjs"));
+  ({ createGitHubRelease } = await import("./create-github-release"));
 });
 
 beforeEach(function setupTestState() {
