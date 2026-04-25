@@ -30,10 +30,12 @@ pnpm changeset pre enter next
 Publishing runs from [`.github/workflows/release.yml`](../.github/workflows/release.yml):
 
 - pushes to `main` open or update the Changesets release PR
-- merging that release PR publishes any package versions that are not yet on npm
-- successful publishes create one repo GitHub Release tagged `v<version>`
-- `workflow_dispatch` can recover a release by targeting the merged release PR
-  commit SHA or another ref that resolves to that commit
+- merging that release PR runs `pnpm release:ci`
+- `release:ci` publishes any package versions that are not yet on npm
+- successful `release:ci` runs create one repo GitHub Release tagged
+  `v<version>`
+- `workflow_dispatch` can rerun `release:ci` for recovery by targeting the
+  merged release PR commit SHA or another ref that resolves to that commit
 
 Trusted publishing for the public packages should point at the `release.yml`
 workflow file on GitHub.

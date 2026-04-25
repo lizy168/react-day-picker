@@ -3,9 +3,9 @@ import { pathToFileURL } from "node:url";
 
 /**
  * @typedef {object} AssociatedPullRequest
- * @property {string} title
  * @property {{ login?: string } | null} user
  * @property {{ ref?: string } | null} base
+ * @property {{ ref?: string } | null} head
  * @property {string | null} merged_at
  */
 
@@ -45,7 +45,7 @@ export function requireEnv(env, name) {
  *   repository: string;
  *   token: string;
  *   commitSha: string;
- *   expectedTitle: string;
+ *   expectedHeadBranch: string;
  *   expectedAuthor: string;
  *   expectedBaseBranch: string;
  * }}
@@ -56,7 +56,7 @@ export function readShouldPublishContext(env = process.env) {
     repository: requireEnv(env, "GITHUB_REPOSITORY"),
     token: requireEnv(env, "GITHUB_TOKEN"),
     commitSha: requireEnv(env, "GITHUB_SHA"),
-    expectedTitle: env.EXPECTED_PR_TITLE || "build: version packages",
+    expectedHeadBranch: env.EXPECTED_PR_BRANCH || "changesets-release/main",
     expectedAuthor: env.EXPECTED_PR_AUTHOR || "github-actions[bot]",
     expectedBaseBranch: env.EXPECTED_BASE_BRANCH || "main",
   };
@@ -107,7 +107,7 @@ export async function fetchAssociatedPullRequests(request, fetchImpl = fetch) {
  *   repository: string;
  *   token: string;
  *   commitSha: string;
- *   expectedTitle: string;
+ *   expectedHeadBranch: string;
  *   expectedAuthor: string;
  *   expectedBaseBranch: string;
  * }} context
@@ -139,7 +139,7 @@ export async function shouldPublishRelease(
 
   return pullRequests.some(function matchesReleasePullRequest(pullRequest) {
     return (
-      pullRequest.title === context.expectedTitle &&
+      pullRequest.head?.ref === context.expectedHeadBranch &&
       pullRequest.user?.login === context.expectedAuthor &&
       pullRequest.base?.ref === context.expectedBaseBranch &&
       Boolean(pullRequest.merged_at)

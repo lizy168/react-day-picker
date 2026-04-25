@@ -26,7 +26,7 @@ function createShouldPublishContext(
     repository: string;
     token: string;
     commitSha: string;
-    expectedTitle: string;
+    expectedHeadBranch: string;
     expectedAuthor: string;
     expectedBaseBranch: string;
   }> = {},
@@ -35,7 +35,7 @@ function createShouldPublishContext(
     repository: "gpbl/react-day-picker",
     token: "test-token",
     commitSha: "abc123",
-    expectedTitle: "build: version packages",
+    expectedHeadBranch: "changesets-release/main",
     expectedAuthor: "github-actions[bot]",
     expectedBaseBranch: "main",
     ...overrides,
@@ -44,16 +44,16 @@ function createShouldPublishContext(
 
 function createPullRequest(
   overrides: Partial<{
-    title: string;
     user: { login?: string } | null;
     base: { ref?: string } | null;
+    head: { ref?: string } | null;
     merged_at: string | null;
   }> = {},
 ) {
   return {
-    title: "build: version packages",
     user: { login: "github-actions[bot]" },
     base: { ref: "main" },
+    head: { ref: "changesets-release/main" },
     merged_at: "2026-04-24T10:00:00.000Z",
     ...overrides,
   };
@@ -79,7 +79,7 @@ describe("shouldPublishRelease", function describeShouldPublishRelease() {
 
   test("it returns false when no associated pull request matches", async function testNoMatch() {
     pullRequestFetcher.mockResolvedValue([
-      createPullRequest({ title: "docs: tweak homepage copy" }),
+      createPullRequest({ head: { ref: "docs/tweak-homepage-copy" } }),
     ]);
 
     await expect(
