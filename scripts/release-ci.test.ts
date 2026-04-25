@@ -1,6 +1,4 @@
 type ReleaseCiModule = typeof import("./release-ci");
-type ReleaseCiOptions = Parameters<ReleaseCiModule["releaseCi"]>[0];
-type ResolvedReleaseCiOptions = Required<NonNullable<ReleaseCiOptions>>;
 
 type ReleaseCiExecCall = {
   args: string[];
@@ -9,28 +7,54 @@ type ReleaseCiExecCall = {
 };
 
 let releaseCi: ReleaseCiModule["releaseCi"];
+let execFileSyncMock: jest.Mock;
+let createGitHubReleaseMock: jest.Mock;
+let getUnpublishedPackagesMock: jest.Mock;
+let publishPackagesMock: jest.Mock;
+let readPackageInfoMock: jest.Mock;
+let shouldPublishReleaseMock: jest.Mock;
 let releaseCiExecCalls: ReleaseCiExecCall[];
-let releaseEnv: NodeJS.ProcessEnv;
-let execFile: jest.MockedFunction<ResolvedReleaseCiOptions["execFile"]>;
-let readPackage: jest.MockedFunction<ResolvedReleaseCiOptions["readPackage"]>;
-let getUnpublished: jest.MockedFunction<
-  ResolvedReleaseCiOptions["getUnpublished"]
->;
-let publish: jest.MockedFunction<ResolvedReleaseCiOptions["publish"]>;
-let shouldPublish: jest.MockedFunction<
-  ResolvedReleaseCiOptions["shouldPublish"]
->;
-let createReleaseAutomation: jest.MockedFunction<
-  ResolvedReleaseCiOptions["createRelease"]
->;
+let originalEnv: NodeJS.ProcessEnv;
+
+jest.mock("node:child_process", () => ({
+  execFileSync: jest.fn(),
+}));
+
+jest.mock("./create-github-release", () => ({
+  createGitHubRelease: jest.fn(),
+}));
+
+jest.mock("./publish-packages", () => ({
+  getUnpublishedPackages: jest.fn(),
+  publishPackages: jest.fn(),
+  readPackageInfo: jest.fn(),
+}));
+
+jest.mock("./should-publish-release", () => ({
+  shouldPublishRelease: jest.fn(),
+}));
 
 beforeAll(async function loadModule() {
+  execFileSyncMock = (await import("node:child_process"))
+    .execFileSync as unknown as jest.Mock;
+  createGitHubReleaseMock = (await import("./create-github-release"))
+    .createGitHubRelease as unknown as jest.Mock;
+  getUnpublishedPackagesMock = (await import("./publish-packages"))
+    .getUnpublishedPackages as unknown as jest.Mock;
+  publishPackagesMock = (await import("./publish-packages"))
+    .publishPackages as unknown as jest.Mock;
+  readPackageInfoMock = (await import("./publish-packages"))
+    .readPackageInfo as unknown as jest.Mock;
+  shouldPublishReleaseMock = (await import("./should-publish-release"))
+    .shouldPublishRelease as unknown as jest.Mock;
   ({ releaseCi } = await import("./release-ci"));
 });
 
 beforeEach(function setupReleaseCiTestState() {
   releaseCiExecCalls = [];
-  releaseEnv = {
+  originalEnv = { ...process.env };
+  process.env = {
+    ...process.env,
     GITHUB_REPOSITORY: "gpbl/react-day-picker",
     GITHUB_TOKEN: "test-token",
     EXPECTED_PR_AUTHOR: "github-actions[bot]",
@@ -38,26 +62,30 @@ beforeEach(function setupReleaseCiTestState() {
     EXPECTED_PR_BRANCH: "changesets-release/main",
   };
 
-  execFile = jest.fn(function mockExecFile(
-    command: string,
-    args: string[],
-    options?: unknown,
-  ) {
-    releaseCiExecCalls.push({ command, args, options });
-    if (command === "git" && args[0] === "rev-parse") {
-      return "abc123\n";
-    }
-    return "";
-  }) as jest.MockedFunction<ResolvedReleaseCiOptions["execFile"]>;
+  jest.resetAllMocks();
 
-  readPackage = jest.fn(function mockReadPackage(_packageDir: string) {
+  execFileSyncMock.mockImplementation(
+    function mockExecFile(command, args, options) {
+      releaseCiExecCalls.push({
+        command: String(command),
+        args: Array.isArray(args) ? [...args] : [],
+        options,
+      });
+      if (command === "git" && Array.isArray(args) && args[0] === "rev-parse") {
+        return "abc123\n";
+      }
+      return "";
+    },
+  );
+
+  readPackageInfoMock.mockImplementation(function mockReadPackage(_packageDir) {
     return {
       name: "react-day-picker",
       version: "10.0.0-next.3",
     };
-  }) as jest.MockedFunction<ResolvedReleaseCiOptions["readPackage"]>;
+  });
 
-  getUnpublished = jest.fn(function mockGetUnpublished() {
+  getUnpublishedPackagesMock.mockImplementation(function mockGetUnpublished() {
     return [
       {
         packageDir: "packages/react-day-picker",
@@ -67,80 +95,57 @@ beforeEach(function setupReleaseCiTestState() {
         },
       },
     ];
-  }) as jest.MockedFunction<ResolvedReleaseCiOptions["getUnpublished"]>;
+  });
 
-  publish = jest.fn(function mockPublish(
-    _tag: string,
-    _options?: Parameters<ResolvedReleaseCiOptions["publish"]>[1],
-  ) {}) as jest.MockedFunction<ResolvedReleaseCiOptions["publish"]>;
+  publishPackagesMock.mockImplementation(function mockPublish() {});
 
-  shouldPublish = jest.fn(async function mockShouldPublish(
-    _context: Parameters<ResolvedReleaseCiOptions["shouldPublish"]>[0],
-    _pullRequestFetcher?: Parameters<
-      ResolvedReleaseCiOptions["shouldPublish"]
-    >[1],
-  ) {
-    return true;
-  }) as jest.MockedFunction<ResolvedReleaseCiOptions["shouldPublish"]>;
+  shouldPublishReleaseMock.mockImplementation(
+    async function mockShouldPublish() {
+      return true;
+    },
+  );
 
-  createReleaseAutomation = jest.fn(async function mockCreateRelease(
-    _context: Parameters<ResolvedReleaseCiOptions["createRelease"]>[0],
-    _options?: Parameters<ResolvedReleaseCiOptions["createRelease"]>[1],
-  ) {
-    return {
-      created: true,
-      release: {
-        html_url:
-          "https://github.com/gpbl/react-day-picker/releases/tag/v10.0.0-next.3",
-      },
-      tag: "v10.0.0-next.3",
-    };
-  }) as jest.MockedFunction<ResolvedReleaseCiOptions["createRelease"]>;
+  createGitHubReleaseMock.mockImplementation(
+    async function mockCreateRelease() {
+      return {
+        created: true,
+        release: {
+          html_url:
+            "https://github.com/gpbl/react-day-picker/releases/tag/v10.0.0-next.3",
+        },
+        tag: "v10.0.0-next.3",
+      };
+    },
+  );
+});
+
+afterEach(function restoreEnv() {
+  process.env = originalEnv;
 });
 
 describe("releaseCi", function describeReleaseCi() {
   test("it skips when the checked-out commit is not the merged release PR", async function testSkipNonReleaseCommit() {
-    shouldPublish.mockResolvedValue(false);
+    shouldPublishReleaseMock.mockResolvedValue(false);
 
-    await expect(
-      releaseCi({
-        env: releaseEnv,
-        execFile,
-        readPackage,
-        getUnpublished,
-        publish,
-        shouldPublish,
-        createRelease: createReleaseAutomation,
-      }),
-    ).resolves.toEqual({
+    await expect(releaseCi()).resolves.toEqual({
       shouldPublish: false,
       publishedPackages: false,
       releaseCreated: false,
     });
 
-    expect(getUnpublished).not.toHaveBeenCalled();
-    expect(publish).not.toHaveBeenCalled();
-    expect(createReleaseAutomation).not.toHaveBeenCalled();
+    expect(getUnpublishedPackagesMock).not.toHaveBeenCalled();
+    expect(publishPackagesMock).not.toHaveBeenCalled();
+    expect(createGitHubReleaseMock).not.toHaveBeenCalled();
   });
 
   test("it validates, publishes, and creates the repo release when versions are unpublished", async function testPublishPath() {
-    await expect(
-      releaseCi({
-        env: releaseEnv,
-        execFile,
-        readPackage,
-        getUnpublished,
-        publish,
-        shouldPublish,
-        createRelease: createReleaseAutomation,
-      }),
-    ).resolves.toEqual({
+    await expect(releaseCi()).resolves.toEqual({
       shouldPublish: true,
       publishedPackages: true,
       releaseCreated: true,
     });
 
-    expect(shouldPublish).toHaveBeenCalledWith({
+    expect(shouldPublishReleaseMock).toHaveBeenCalledWith({
       repository: "gpbl/react-day-picker",
       token: "test-token",
       commitSha: "abc123",
@@ -161,11 +166,11 @@ describe("releaseCi", function describeReleaseCi() {
       ["pnpm", "pack:dry-run"],
       ["pnpm", "test:build"],
     ]);
-    expect(publish).toHaveBeenCalledWith("next", {
-      execFile,
-      readPackage,
+    expect(publishPackagesMock).toHaveBeenCalledWith("next", {
+      execFile: execFileSyncMock,
+      readPackage: readPackageInfoMock,
     });
-    expect(createReleaseAutomation).toHaveBeenCalledWith({
+    expect(createGitHubReleaseMock).toHaveBeenCalledWith({
       repository: "gpbl/react-day-picker",
       token: "test-token",
       commitSha: "abc123",
@@ -174,19 +179,9 @@ describe("releaseCi", function describeReleaseCi() {
   });
 
   test("it still creates the repo release when packages are already published", async function testCreateReleaseWithoutPublishing() {
-    getUnpublished.mockReturnValue([]);
+    getUnpublishedPackagesMock.mockReturnValue([]);
 
-    await expect(
-      releaseCi({
-        env: releaseEnv,
-        execFile,
-        readPackage,
-        getUnpublished,
-        publish,
-        shouldPublish,
-        createRelease: createReleaseAutomation,
-      }),
-    ).resolves.toEqual({
+    await expect(releaseCi()).resolves.toEqual({
       shouldPublish: true,
       publishedPackages: false,
       releaseCreated: true,
@@ -195,7 +190,7 @@ describe("releaseCi", function describeReleaseCi() {
     expect(
       releaseCiExecCalls.map((call) => [call.command, ...call.args]),
     ).toEqual([["git", "rev-parse", "HEAD"]]);
-    expect(publish).not.toHaveBeenCalled();
-    expect(createReleaseAutomation).toHaveBeenCalledTimes(1);
+    expect(publishPackagesMock).not.toHaveBeenCalled();
+    expect(createGitHubReleaseMock).toHaveBeenCalledTimes(1);
   });
 });

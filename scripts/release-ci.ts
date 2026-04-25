@@ -1,21 +1,13 @@
 import { execFileSync } from "node:child_process";
 import process from "node:process";
 import { pathToFileURL } from "node:url";
+import { createGitHubRelease } from "./create-github-release";
 import {
-  type CreateReleaseContext,
-  createGitHubRelease,
-} from "./create-github-release";
-import {
-  type ExecFile,
   getUnpublishedPackages,
-  type PublishPackagesOptions,
   publishPackages,
   readPackageInfo,
 } from "./publish-packages";
-import {
-  type ShouldPublishContext,
-  shouldPublishRelease,
-} from "./should-publish-release";
+import { shouldPublishRelease } from "./should-publish-release";
 
 const repoRoot = new URL("../", import.meta.url);
 const mainPackageDir = "packages/react-day-picker";
@@ -31,74 +23,13 @@ const validationCommands = [
   ["test:build"],
 ] as const;
 
-type ReleaseCiCreateRelease = (
-  context: CreateReleaseContext,
-  options?: {
-    fetchRelease?: (request: {
-      owner: string;
-      repo: string;
-      tag: string;
-      token: string;
-    }) => Promise<{ html_url: string }>;
-    createRelease?: (request: {
-      owner: string;
-      repo: string;
-      tag: string;
-      token: string;
-      commitSha: string;
-      prerelease: boolean;
-    }) => Promise<{ html_url: string }>;
-  },
-) => Promise<{
-  created: boolean;
-  release: { html_url: string };
-  tag: string;
-}>;
-
-type ReleaseCiShouldPublish = (
-  context: ShouldPublishContext,
-  pullRequestFetcher?: (request: {
-    owner: string;
-    repo: string;
-    commitSha: string;
-    token: string;
-  }) => Promise<
-    {
-      user: { login?: string } | null;
-      base: { ref?: string } | null;
-      head: { ref?: string } | null;
-      merged_at: string | null;
-    }[]
-  >,
-) => Promise<boolean>;
-
-export interface ReleaseCiOptions {
-  env?: NodeJS.ProcessEnv;
-  execFile?: ExecFile;
-  readPackage?: typeof readPackageInfo;
-  getUnpublished?: typeof getUnpublishedPackages;
-  publish?: typeof publishPackages;
-  shouldPublish?: ReleaseCiShouldPublish;
-  createRelease?: ReleaseCiCreateRelease;
-}
-
-export async function releaseCi(options: ReleaseCiOptions = {}): Promise<{
+export async function releaseCi(): Promise<{
   shouldPublish: boolean;
   publishedPackages: boolean;
   releaseCreated: boolean;
 }> {
-  const {
-    env = process.env,
-    execFile = execFileSync,
-    readPackage = readPackageInfo,
-    getUnpublished = getUnpublishedPackages,
-    publish = publishPackages,
-    shouldPublish = shouldPublishRelease,
-    createRelease = createGitHubRelease,
-  } = options;
-
-  const repository = env.GITHUB_REPOSITORY;
-  const token = env.GITHUB_TOKEN;
+  const repository = process.env.GITHUB_REPOSITORY;
+  const token = process.env.GITHUB_TOKEN;
   if (!repository) {
     throw new Error("Missing required environment variable: GITHUB_REPOSITORY");
   }
@@ -107,21 +38,22 @@ export async function releaseCi(options: ReleaseCiOptions = {}): Promise<{
   }
 
   const commitSha = String(
-    execFile("git", ["rev-parse", "HEAD"], {
+    execFileSync("git", ["rev-parse", "HEAD"], {
       cwd: repoRoot,
       encoding: "utf8",
       stdio: ["ignore", "pipe", "pipe"],
     }),
   ).trim();
-  const packageInfo = readPackage(mainPackageDir);
+  const packageInfo = readPackageInfo(mainPackageDir);
 
-  const publishAllowed = await shouldPublish({
+  const publishAllowed = await shouldPublishRelease({
     repository,
     token,
     commitSha,
-    expectedHeadBranch: env.EXPECTED_PR_BRANCH || "changesets-release/main",
-    expectedAuthor: env.EXPECTED_PR_AUTHOR || "github-actions[bot]",
-    expectedBaseBranch: env.EXPECTED_BASE_BRANCH || "main",
+    expectedHeadBranch:
+      process.env.EXPECTED_PR_BRANCH || "changesets-release/main",
+    expectedAuthor: process.env.EXPECTED_PR_AUTHOR || "github-actions[bot]",
+    expectedBaseBranch: process.env.EXPECTED_BASE_BRANCH || "main",
   });
 
   if (!publishAllowed) {
@@ -135,15 +67,15 @@ export async function releaseCi(options: ReleaseCiOptions = {}): Promise<{
     };
   }
 
-  const unpublishedPackages = getUnpublished({
-    execFile,
-    readPackage,
-  } satisfies PublishPackagesOptions);
+  const unpublishedPackages = getUnpublishedPackages({
+    execFile: execFileSync,
+    readPackage: readPackageInfo,
+  });
   let publishedPackages = false;
 
   if (unpublishedPackages.length > 0) {
     for (const commandArgs of validationCommands) {
-      execFile("pnpm", [...commandArgs], {
+      execFileSync("pnpm", [...commandArgs], {
         cwd: repoRoot,
         stdio: "inherit",
       });
@@ -151,13 +83,16 @@ export async function releaseCi(options: ReleaseCiOptions = {}): Promise<{
 
     const npmTag = packageInfo.version.includes("-next") ? "next" : "latest";
     console.log(`Publishing ${packageInfo.version} with dist-tag ${npmTag}.`);
-    publish(npmTag, { execFile, readPackage });
+    publishPackages(npmTag, {
+      execFile: execFileSync,
+      readPackage: readPackageInfo,
+    });
     publishedPackages = true;
   } else {
     console.log("All publishable package versions are already on npm.");
   }
 
-  const releaseResult = await createRelease({
+  const releaseResult = await createGitHubRelease({
     repository,
     token,
     commitSha,

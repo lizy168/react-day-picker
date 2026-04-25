@@ -1,4 +1,4 @@
-type PublishPackagesModule = typeof import("./publish-packages");
+type PublishPackagesScriptModule = typeof import("./publish-packages");
 
 type ExecCall = {
   args: string[];
@@ -8,9 +8,9 @@ type ExecCall = {
 
 type ExecFile = (command: string, args: string[], options?: unknown) => string;
 
-let isPackageVersionMissingError: PublishPackagesModule["isPackageVersionMissingError"];
-let getUnpublishedPackages: PublishPackagesModule["getUnpublishedPackages"];
-let publishPackages: PublishPackagesModule["publishPackages"];
+let isPackageVersionMissingError: PublishPackagesScriptModule["isPackageVersionMissingError"];
+let getUnpublishedPackages: PublishPackagesScriptModule["getUnpublishedPackages"];
+let publishPackages: PublishPackagesScriptModule["publishPackages"];
 let consoleLogSpy: jest.SpiedFunction<typeof console.log>;
 
 beforeAll(async function loadModule() {

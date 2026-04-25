@@ -24,17 +24,11 @@ interface AssociatedPullRequestRequest {
   token: string;
 }
 
-type PullRequestFetcher = (
-  request: AssociatedPullRequestRequest,
-  fetchImpl?: typeof fetch,
-) => Promise<AssociatedPullRequest[]>;
-
 async function fetchAssociatedPullRequests(
   request: AssociatedPullRequestRequest,
-  fetchImpl = fetch,
 ): Promise<AssociatedPullRequest[]> {
   const { owner, repo, commitSha, token } = request;
-  const response = await fetchImpl(
+  const response = await fetch(
     `https://api.github.com/repos/${owner}/${repo}/commits/${encodeURIComponent(commitSha)}/pulls`,
     {
       headers: {
@@ -56,14 +50,13 @@ async function fetchAssociatedPullRequests(
 
 export async function shouldPublishRelease(
   context: ShouldPublishContext,
-  pullRequestFetcher: PullRequestFetcher = fetchAssociatedPullRequests,
 ): Promise<boolean> {
   const [owner, repo] = context.repository.split("/");
   if (!owner || !repo) {
     throw new Error(`Invalid GITHUB_REPOSITORY value: ${context.repository}`);
   }
 
-  const pullRequests = await pullRequestFetcher({
+  const pullRequests = await fetchAssociatedPullRequests({
     owner,
     repo,
     commitSha: context.commitSha,

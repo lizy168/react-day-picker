@@ -24,22 +24,11 @@ interface ReleaseCreateRequest extends ReleaseLookupRequest {
   prerelease: boolean;
 }
 
-type FetchRelease = (
-  request: ReleaseLookupRequest,
-  fetchImpl?: typeof fetch,
-) => Promise<GitHubRelease>;
-
-type CreateRelease = (
-  request: ReleaseCreateRequest,
-  fetchImpl?: typeof fetch,
-) => Promise<GitHubRelease>;
-
 async function fetchReleaseByTag(
   request: ReleaseLookupRequest,
-  fetchImpl = fetch,
 ): Promise<GitHubRelease> {
   const { owner, repo, tag, token } = request;
-  const response = await fetchImpl(
+  const response = await fetch(
     `https://api.github.com/repos/${owner}/${repo}/releases/tags/${encodeURIComponent(tag)}`,
     {
       headers: {
@@ -67,10 +56,9 @@ async function fetchReleaseByTag(
 
 async function createRelease(
   request: ReleaseCreateRequest,
-  fetchImpl = fetch,
 ): Promise<GitHubRelease> {
   const { owner, repo, tag, token, commitSha, prerelease } = request;
-  const response = await fetchImpl(
+  const response = await fetch(
     `https://api.github.com/repos/${owner}/${repo}/releases`,
     {
       method: "POST",
@@ -102,10 +90,6 @@ async function createRelease(
 
 export async function createGitHubRelease(
   context: CreateReleaseContext,
-  options: {
-    fetchRelease?: FetchRelease;
-    createRelease?: CreateRelease;
-  } = {},
 ): Promise<{
   created: boolean;
   release: GitHubRelease;
@@ -118,13 +102,9 @@ export async function createGitHubRelease(
 
   const tag = `v${context.packageVersion}`;
   const prerelease = context.packageVersion.includes("-next");
-  const {
-    fetchRelease = fetchReleaseByTag,
-    createRelease: createReleaseRequest = createRelease,
-  } = options;
 
   try {
-    const existingRelease = await fetchRelease({
+    const existingRelease = await fetchReleaseByTag({
       owner,
       repo,
       tag,
@@ -139,7 +119,7 @@ export async function createGitHubRelease(
     }
   }
 
-  const createdRelease = await createReleaseRequest({
+  const createdRelease = await createRelease({
     owner,
     repo,
     tag,

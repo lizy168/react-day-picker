@@ -1,11 +1,9 @@
-type ShouldPublishModule = typeof import("./should-publish-release");
-type PullRequestFetcher = NonNullable<
-  Parameters<ShouldPublishModule["shouldPublishRelease"]>[1]
->;
+type ShouldPublishScriptModule = typeof import("./should-publish-release");
 
-let shouldPublishRelease: ShouldPublishModule["shouldPublishRelease"];
+let shouldPublishRelease: ShouldPublishScriptModule["shouldPublishRelease"];
 let publishContext: ReturnType<typeof createShouldPublishContext>;
-let pullRequestFetcher: jest.MockedFunction<PullRequestFetcher>;
+let shouldPublishFetchMock: jest.MockedFunction<typeof fetch>;
+const originalShouldPublishFetch = global.fetch;
 
 beforeAll(async function loadModule() {
   ({ shouldPublishRelease } = await import("./should-publish-release"));
@@ -13,11 +11,12 @@ beforeAll(async function loadModule() {
 
 beforeEach(function setupTestState() {
   publishContext = createShouldPublishContext();
-  pullRequestFetcher = jest.fn(async function fetchAssociatedPullRequests(
-    _request: Parameters<PullRequestFetcher>[0],
-  ) {
-    return [createPullRequest()];
-  }) as jest.MockedFunction<PullRequestFetcher>;
+  shouldPublishFetchMock = jest.fn() as jest.MockedFunction<typeof fetch>;
+  global.fetch = shouldPublishFetchMock;
+});
+
+afterEach(function restoreFetch() {
+  global.fetch = originalShouldPublishFetch;
 });
 
 function createShouldPublishContext(
@@ -58,49 +57,73 @@ function createPullRequest(
   };
 }
 
+function createShouldPublishFetchResponse(
+  pullRequests: Array<ReturnType<typeof createPullRequest>>,
+  overrides: Partial<{
+    ok: boolean;
+    status: number;
+  }> = {},
+) {
+  return {
+    ok: true,
+    status: 200,
+    json: async () => pullRequests,
+    ...overrides,
+  } as Response;
+}
+
 describe("shouldPublishRelease", function describeShouldPublishRelease() {
   test("it returns true for the expected merged release PR", async function testReleasePullRequest() {
-    await expect(
-      shouldPublishRelease(publishContext, pullRequestFetcher),
-    ).resolves.toBe(true);
+    shouldPublishFetchMock.mockResolvedValueOnce(
+      createShouldPublishFetchResponse([createPullRequest()]),
+    );
+
+    await expect(shouldPublishRelease(publishContext)).resolves.toBe(true);
   });
 
   test("it looks up pull requests for the pushed commit", async function testLookupRequest() {
-    await shouldPublishRelease(publishContext, pullRequestFetcher);
+    shouldPublishFetchMock.mockResolvedValueOnce(
+      createShouldPublishFetchResponse([createPullRequest()]),
+    );
 
-    expect(pullRequestFetcher).toHaveBeenCalledWith({
-      owner: "gpbl",
-      repo: "react-day-picker",
-      commitSha: "abc123",
-      token: "test-token",
-    });
+    await shouldPublishRelease(publishContext);
+
+    expect(shouldPublishFetchMock).toHaveBeenCalledWith(
+      "https://api.github.com/repos/gpbl/react-day-picker/commits/abc123/pulls",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Authorization: "Bearer test-token",
+        }),
+      }),
+    );
   });
 
   test("it returns false when no associated pull request matches", async function testNoMatch() {
-    pullRequestFetcher.mockResolvedValue([
-      createPullRequest({ head: { ref: "docs/tweak-homepage-copy" } }),
-    ]);
+    shouldPublishFetchMock.mockResolvedValueOnce(
+      createShouldPublishFetchResponse([
+        createPullRequest({ head: { ref: "docs/tweak-homepage-copy" } }),
+      ]),
+    );
 
-    await expect(
-      shouldPublishRelease(publishContext, pullRequestFetcher),
-    ).resolves.toBe(false);
+    await expect(shouldPublishRelease(publishContext)).resolves.toBe(false);
   });
 
   test("it rejects invalid repository values", async function testInvalidRepository() {
     publishContext.repository = "react-day-picker";
 
-    await expect(
-      shouldPublishRelease(publishContext, pullRequestFetcher),
-    ).rejects.toThrow("Invalid GITHUB_REPOSITORY value: react-day-picker");
+    await expect(shouldPublishRelease(publishContext)).rejects.toThrow(
+      "Invalid GITHUB_REPOSITORY value: react-day-picker",
+    );
+    expect(shouldPublishFetchMock).not.toHaveBeenCalled();
   });
 
   test("it rejects unmerged release pull requests", async function testUnmergedPullRequest() {
-    pullRequestFetcher.mockResolvedValue([
-      createPullRequest({ merged_at: null }),
-    ]);
+    shouldPublishFetchMock.mockResolvedValueOnce(
+      createShouldPublishFetchResponse([
+        createPullRequest({ merged_at: null }),
+      ]),
+    );
 
-    await expect(
-      shouldPublishRelease(publishContext, pullRequestFetcher),
-    ).resolves.toBe(false);
+    await expect(shouldPublishRelease(publishContext)).resolves.toBe(false);
   });
 });
