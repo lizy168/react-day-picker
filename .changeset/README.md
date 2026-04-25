@@ -27,4 +27,11 @@ with Changesets, enter prerelease mode before running `changeset version`:
 pnpm changeset pre enter next
 ```
 
-Publishing only happens when `pnpm changeset publish` is run.
+Publishing runs from [`.github/workflows/release.yml`](../.github/workflows/release.yml):
+
+- pushes to `main` open or update the Changesets release PR
+- merging that release PR publishes any package versions that are not yet on npm
+- successful publishes create one repo GitHub Release tagged `v<version>`
+
+Trusted publishing for the public packages should point at the `release.yml`
+workflow file on GitHub.

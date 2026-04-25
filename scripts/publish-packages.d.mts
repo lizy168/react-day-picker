@@ -17,6 +17,11 @@ export interface PublishPackagesOptions {
   readPackage?: typeof readPackageInfo;
 }
 
+export interface UnpublishedPackage {
+  packageDir: string;
+  packageInfo: PackageInfo;
+}
+
 export const packageDirs: string[];
 
 export function readPackageInfo(
@@ -31,8 +36,13 @@ export function isPackageVersionPublished(
   execFile?: ExecFile,
 ): boolean;
 
+export function getUnpublishedPackages(
+  options?: PublishPackagesOptions,
+): UnpublishedPackage[];
+
 export function publishPackage(
   packageDir: string,
+  packageInfo: PackageInfo,
   tag: string,
   execFile?: ExecFile,
 ): void;

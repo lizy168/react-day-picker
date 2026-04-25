@@ -1,0 +1,148 @@
+name: release
+
+# How this workflow works:
+# - Every push to `main` updates or opens the Changesets release PR when there
+#   are pending changesets.
+# - When the release PR is merged, Changesets reports no pending changesets on
+#   `main`; at that point we check whether the package versions in the repo are
+#   already on npm.
+# - Only unpublished package versions trigger the validation + publish path, so
+#   regular docs or repo-only merges on `main` do not rerun a release build.
+#
+# Repo notes:
+# - npm trusted publishing should point at this exact workflow file.
+# - The publish step uses the existing repo scripts so prerelease tagging,
+#   version alignment, and already-published skips stay consistent.
+on:
+  push:
+    branches:
+      - main
+
+concurrency: ${{ github.workflow }}-${{ github.ref }}
+
+permissions:
+  contents: write
+  pull-requests: write
+  id-token: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          registry-url: https://registry.npmjs.org/
+          always-auth: false
+      - run: pnpm install --frozen-lockfile
+
+      - name: Create release pull request or mark publishable release
+        id: changesets
+        uses: changesets/action@v1
+        with:
+          commit: "build: version packages"
+          title: "build: version packages"
+          createGithubReleases: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Check whether this push merged the release pull request
+        id: release-pr
+        if: steps.changesets.outputs.hasChangesets == 'false'
+        env:
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_SHA: ${{ github.sha }}
+          EXPECTED_PR_TITLE: "build: version packages"
+          EXPECTED_PR_AUTHOR: github-actions[bot]
+          EXPECTED_BASE_BRANCH: main
+        run: |
+          should_publish=$(node ./scripts/should-publish-release.mjs)
+          echo "should_publish=$should_publish" >> "$GITHUB_OUTPUT"
+          if [ "$should_publish" = "true" ]; then
+            echo "This push merged the Changesets release PR."
+          else
+            echo "This push did not merge the Changesets release PR."
+          fi
+
+      - name: Check for unpublished package versions
+        id: unpublished
+        if: steps.release-pr.outputs.should_publish == 'true'
+        run: |
+          has_unpublished=$(node ./scripts/publish-packages.mjs --check)
+          echo "has_unpublished=$has_unpublished" >> "$GITHUB_OUTPUT"
+          if [ "$has_unpublished" = "true" ]; then
+            echo "Found package versions that still need publishing."
+          else
+            echo "All publishable package versions are already on npm."
+          fi
+
+      - name: Typecheck
+        if: steps.unpublished.outputs.has_unpublished == 'true'
+        run: pnpm typecheck
+
+      - name: Lint
+        if: steps.unpublished.outputs.has_unpublished == 'true'
+        run: pnpm lint ci . --reporter=github
+
+      - name: Test
+        if: steps.unpublished.outputs.has_unpublished == 'true'
+        run: pnpm test
+
+      - name: Test (time zone)
+        if: steps.unpublished.outputs.has_unpublished == 'true'
+        run: pnpm test:tz
+
+      - name: Build
+        if: steps.unpublished.outputs.has_unpublished == 'true'
+        run: pnpm build
+
+      - name: Validate workspace versions
+        if: steps.unpublished.outputs.has_unpublished == 'true'
+        run: pnpm check:versions
+
+      - name: Validate npm pack output
+        if: steps.unpublished.outputs.has_unpublished == 'true'
+        run: pnpm pack:dry-run
+
+      - name: Test built packages
+        if: steps.unpublished.outputs.has_unpublished == 'true'
+        run: pnpm test:build
+
+      - name: Read package version
+        id: package-version
+        if: steps.unpublished.outputs.has_unpublished == 'true'
+        run: |
+          version=$(node -p 'require("./packages/react-day-picker/package.json").version')
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve npm dist-tag
+        id: npm-tag
+        if: steps.unpublished.outputs.has_unpublished == 'true'
+        env:
+          PACKAGE_VERSION: ${{ steps.package-version.outputs.version }}
+        run: |
+          if [[ "$PACKAGE_VERSION" == *-next* ]]; then
+            tag="next"
+          else
+            tag="latest"
+          fi
+
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "Publishing $PACKAGE_VERSION with dist-tag $tag"
+
+      - name: Publish packages
+        if: steps.unpublished.outputs.has_unpublished == 'true'
+        run: node ./scripts/publish-packages.mjs ${{ steps.npm-tag.outputs.tag }}
+
+      - name: Create GitHub Release
+        if: steps.unpublished.outputs.has_unpublished == 'true'
+        env:
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_SHA: ${{ github.sha }}
+          PACKAGE_VERSION: ${{ steps.package-version.outputs.version }}
+        run: node ./scripts/create-github-release.mjs

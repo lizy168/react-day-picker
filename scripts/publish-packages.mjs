@@ -15,6 +15,12 @@ export const packageDirs = [
 ];
 
 /**
+ * @typedef {object} UnpublishedPackage
+ * @property {string} packageDir - Workspace package directory.
+ * @property {PackageInfo} packageInfo - Package metadata from package.json.
+ */
+
+/**
  * @typedef {object} PackageInfo
  * @property {string} name - Package name from package.json.
  * @property {string} version - Package version from package.json.
@@ -100,6 +106,33 @@ export function isPackageVersionPublished(
 }
 
 /**
+ * Returns the workspace packages whose current versions are not yet on npm.
+ *
+ * @param {object} [options] - Test hooks and package list override.
+ * @param {string[]} [options.packages=packageDirs] - Package directories.
+ *   Default is `packageDirs`
+ * @param {typeof execFileSync} [options.execFile=execFileSync] - Command
+ *   runner. Default is `execFileSync`
+ * @param {typeof readPackageInfo} [options.readPackage=readPackageInfo] -
+ *   Package metadata reader. Default is `readPackageInfo`
+ * @returns {UnpublishedPackage[]} Packages whose versions still need publish.
+ */
+export function getUnpublishedPackages(options = {}) {
+  const {
+    packages = packageDirs,
+    execFile = execFileSync,
+    readPackage = readPackageInfo,
+  } = options;
+
+  return packages.flatMap(function mapPackage(packageDir) {
+    const packageInfo = readPackage(packageDir);
+    return isPackageVersionPublished(packageInfo, execFile)
+      ? []
+      : [{ packageDir, packageInfo }];
+  });
+}
+
+/**
  * Publishes a package directory to npm.
  *
  * @param {string} packageDir - Package directory relative to the repo root.
@@ -178,7 +211,12 @@ export function isEntrypoint() {
 
 if (isEntrypoint()) {
   try {
-    publishPackages(process.argv[2]);
+    if (process.argv[2] === "--check") {
+      const hasUnpublishedPackages = getUnpublishedPackages().length > 0;
+      console.log(hasUnpublishedPackages ? "true" : "false");
+    } else {
+      publishPackages(process.argv[2]);
+    }
   } catch (error) {
     if (error instanceof Error) {
       console.error(error.message);

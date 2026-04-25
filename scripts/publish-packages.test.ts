@@ -9,13 +9,13 @@ type ExecCall = {
 type ExecFile = (command: string, args: string[], options?: unknown) => string;
 
 let isPackageVersionMissingError: PublishPackagesModule["isPackageVersionMissingError"];
+let getUnpublishedPackages: PublishPackagesModule["getUnpublishedPackages"];
 let publishPackages: PublishPackagesModule["publishPackages"];
 let consoleLogSpy: jest.SpiedFunction<typeof console.log>;
 
 beforeAll(async function loadModule() {
-  ({ isPackageVersionMissingError, publishPackages } = await import(
-    "./publish-packages.mjs"
-  ));
+  ({ isPackageVersionMissingError, getUnpublishedPackages, publishPackages } =
+    await import("./publish-packages.mjs"));
 });
 
 beforeEach(function setupConsoleSpy() {
@@ -78,6 +78,42 @@ describe("isPackageVersionMissingError", function describeIsPackageVersionMissin
 });
 
 describe("publishPackages", function describePublishPackages() {
+  test("it returns only workspace packages that still need publishing", function testGetUnpublishedPackages() {
+    const execFile = jest.fn(function execFile(
+      _command: string,
+      args: string[],
+    ) {
+      if (args[0] === "view" && args[1] === "react-day-picker@10.0.0-next.1") {
+        return "10.0.0-next.1\n";
+      }
+
+      if (
+        args[0] === "view" &&
+        args[1] === "@daypicker/buddhist@10.0.0-next.1"
+      ) {
+        throw createNpmError("npm ERR! code E404");
+      }
+
+      return "";
+    }) as jest.MockedFunction<ExecFile>;
+
+    expect(
+      getUnpublishedPackages({
+        execFile,
+        packages: ["packages/react-day-picker", "packages/buddhist"],
+        readPackage: createPackageReader(),
+      }),
+    ).toEqual([
+      {
+        packageDir: "packages/buddhist",
+        packageInfo: {
+          name: "@daypicker/buddhist",
+          version: "10.0.0-next.1",
+        },
+      },
+    ]);
+  });
+
   test("it skips versions already published on npm", function testSkipPublishedVersion() {
     const execCalls: ExecCall[] = [];
     const execFile = jest.fn(function execFile(
