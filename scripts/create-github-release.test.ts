@@ -1,3 +1,5 @@
+export {};
+
 type CreateGitHubReleaseModule = typeof import("./create-github-release.mjs");
 type FetchRelease = NonNullable<
   Parameters<CreateGitHubReleaseModule["createGitHubRelease"]>[1]
@@ -17,15 +19,21 @@ beforeAll(async function loadModule() {
 
 beforeEach(function setupTestState() {
   context = createContext();
-  fetchRelease = jest.fn(async function fetchExistingRelease() {
+  fetchRelease = jest.fn(async function fetchExistingRelease(
+    _request: Parameters<NonNullable<FetchRelease>>[0],
+    _fetchImpl?: Parameters<NonNullable<FetchRelease>>[1],
+  ) {
     return createReleasePayload();
-  });
-  createRelease = jest.fn(async function createNewRelease() {
+  }) as jest.MockedFunction<NonNullable<FetchRelease>>;
+  createRelease = jest.fn(async function createNewRelease(
+    _request: Parameters<NonNullable<CreateRelease>>[0],
+    _fetchImpl?: Parameters<NonNullable<CreateRelease>>[1],
+  ) {
     return createReleasePayload({
       html_url:
         "https://github.com/gpbl/react-day-picker/releases/tag/v10.0.0-next.1",
     });
-  });
+  }) as jest.MockedFunction<NonNullable<CreateRelease>>;
 });
 
 function createContext(
