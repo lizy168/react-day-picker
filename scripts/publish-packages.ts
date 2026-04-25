@@ -5,7 +5,7 @@ import { pathToFileURL } from "node:url";
 
 const repoRoot = new URL("../", import.meta.url);
 
-export const packageDirs = [
+const packageDirs = [
   "packages/react-day-picker",
   "packages/buddhist",
   "packages/ethiopic",
@@ -24,24 +24,9 @@ export interface UnpublishedPackage {
   packageInfo: PackageInfo;
 }
 
-export type ExecFile = (
-  command: string,
-  args: string[],
-  options?: object,
-) => Buffer | string;
-
-export interface PublishPackagesOptions {
-  packages?: readonly string[];
-  execFile?: ExecFile;
-  readPackage?: typeof readPackageInfo;
-}
-
-export function readPackageInfo(
-  packageDir: string,
-  readFile: typeof readFileSync = readFileSync,
-): PackageInfo {
+export function readPackageInfo(packageDir: string): PackageInfo {
   const packageJsonPath = new URL(`${packageDir}/package.json`, repoRoot);
-  const packageJson = JSON.parse(readFile(packageJsonPath, "utf8")) as {
+  const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf8")) as {
     name: string;
     version: string;
   };
@@ -51,7 +36,7 @@ export function readPackageInfo(
   };
 }
 
-export function isPackageVersionMissingError(error: unknown): boolean {
+function isPackageVersionMissingError(error: unknown): boolean {
   if (!(error instanceof Error)) {
     return false;
   }
@@ -74,12 +59,9 @@ export function isPackageVersionMissingError(error: unknown): boolean {
   );
 }
 
-export function isPackageVersionPublished(
-  packageInfo: PackageInfo,
-  execFile: ExecFile = execFileSync,
-): boolean {
+function isPackageVersionPublished(packageInfo: PackageInfo): boolean {
   try {
-    execFile(
+    execFileSync(
       "npm",
       ["view", `${packageInfo.name}@${packageInfo.version}`, "version"],
       {
@@ -96,74 +78,50 @@ export function isPackageVersionPublished(
   }
 }
 
-export function getUnpublishedPackages(
-  options: PublishPackagesOptions = {},
-): UnpublishedPackage[] {
-  const {
-    packages = packageDirs,
-    execFile = execFileSync,
-    readPackage = readPackageInfo,
-  } = options;
-
-  return packages.flatMap((packageDir) => {
-    const packageInfo = readPackage(packageDir);
-    return isPackageVersionPublished(packageInfo, execFile)
+export function getUnpublishedPackages(): UnpublishedPackage[] {
+  return packageDirs.flatMap((packageDir) => {
+    const packageInfo = readPackageInfo(packageDir);
+    return isPackageVersionPublished(packageInfo)
       ? []
       : [{ packageDir, packageInfo }];
   });
 }
 
-export function publishPackage(
+function publishPackage(
   packageDir: string,
   packageInfo: PackageInfo,
   tag: string,
-  execFile: ExecFile = execFileSync,
 ): void {
   const publishArgs = ["publish", "--provenance", "--tag", tag];
   if (packageInfo.name.startsWith("@")) {
     publishArgs.push("--access", "public");
   }
 
-  execFile("npm", publishArgs, {
+  execFileSync("npm", publishArgs, {
     cwd: new URL(`../${packageDir}`, import.meta.url),
     stdio: "inherit",
   });
 }
 
-export function publishPackages(
-  tag: string,
-  options: PublishPackagesOptions = {},
-): void {
+export function publishPackages(tag: string): void {
   if (!tag) {
     throw new Error("Usage: publish-packages <npm-tag>");
   }
 
-  const {
-    packages = packageDirs,
-    execFile = execFileSync,
-    readPackage = readPackageInfo,
-  } = options;
-
-  for (const packageDir of packages) {
-    const packageInfo = readPackage(packageDir);
-    if (isPackageVersionPublished(packageInfo, execFile)) {
+  for (const packageDir of packageDirs) {
+    const packageInfo = readPackageInfo(packageDir);
+    if (isPackageVersionPublished(packageInfo)) {
       console.log(
         `Skipping ${packageInfo.name}@${packageInfo.version}; already published.`,
       );
       continue;
     }
 
-    publishPackage(packageDir, packageInfo, tag, execFile);
+    publishPackage(packageDir, packageInfo, tag);
   }
 }
 
 export function main(): void {
-  if (process.argv[2] === "--check") {
-    const hasUnpublishedPackages = getUnpublishedPackages().length > 0;
-    console.log(hasUnpublishedPackages ? "true" : "false");
-    return;
-  }
-
   publishPackages(process.argv[2] || "");
 }
 

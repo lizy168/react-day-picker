@@ -166,10 +166,8 @@ describe("releaseCi", function describeReleaseCi() {
       ["pnpm", "pack:dry-run"],
       ["pnpm", "test:build"],
     ]);
-    expect(publishPackagesMock).toHaveBeenCalledWith("next", {
-      execFile: execFileSyncMock,
-      readPackage: readPackageInfoMock,
-    });
+    expect(getUnpublishedPackagesMock).toHaveBeenCalledWith();
+    expect(publishPackagesMock).toHaveBeenCalledWith("next");
     expect(createGitHubReleaseMock).toHaveBeenCalledWith({
       repository: "gpbl/react-day-picker",
       token: "test-token",

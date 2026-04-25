@@ -67,10 +67,7 @@ export async function releaseCi(): Promise<{
     };
   }
 
-  const unpublishedPackages = getUnpublishedPackages({
-    execFile: execFileSync,
-    readPackage: readPackageInfo,
-  });
+  const unpublishedPackages = getUnpublishedPackages();
   let publishedPackages = false;
 
   if (unpublishedPackages.length > 0) {
@@ -83,10 +80,7 @@ export async function releaseCi(): Promise<{
 
     const npmTag = packageInfo.version.includes("-next") ? "next" : "latest";
     console.log(`Publishing ${packageInfo.version} with dist-tag ${npmTag}.`);
-    publishPackages(npmTag, {
-      execFile: execFileSync,
-      readPackage: readPackageInfo,
-    });
+    publishPackages(npmTag);
     publishedPackages = true;
   } else {
     console.log("All publishable package versions are already on npm.");
