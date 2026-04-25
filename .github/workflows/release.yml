@@ -17,6 +17,12 @@ on:
   push:
     branches:
       - main
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Commit SHA or ref for the merged Changesets release PR to recover
+        required: true
+        type: string
 
 concurrency: ${{ github.workflow }}-${{ github.ref }}
 
@@ -30,6 +36,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.ref || github.ref }}
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
@@ -37,10 +45,14 @@ jobs:
           cache: pnpm
           registry-url: https://registry.npmjs.org/
           always-auth: false
+      - name: Read checked-out commit SHA
+        id: checkout-sha
+        run: |
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
       - run: pnpm install --frozen-lockfile
-
       - name: Create release pull request or mark publishable release
         id: changesets
+        if: github.event_name == 'push'
         uses: changesets/action@v1
         with:
           commit: "build: version packages"
@@ -51,11 +63,11 @@ jobs:
 
       - name: Check whether this push merged the release pull request
         id: release-pr
-        if: steps.changesets.outputs.hasChangesets == 'false'
+        if: github.event_name == 'workflow_dispatch' || steps.changesets.outputs.hasChangesets == 'false'
         env:
           GITHUB_REPOSITORY: ${{ github.repository }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITHUB_SHA: ${{ github.sha }}
+          GITHUB_SHA: ${{ steps.checkout-sha.outputs.sha }}
           EXPECTED_PR_TITLE: "build: version packages"
           EXPECTED_PR_AUTHOR: github-actions[bot]
           EXPECTED_BASE_BRANCH: main
@@ -114,7 +126,7 @@ jobs:
 
       - name: Read package version
         id: package-version
-        if: steps.unpublished.outputs.has_unpublished == 'true'
+        if: steps.release-pr.outputs.should_publish == 'true'
         run: |
           version=$(node -p 'require("./packages/react-day-picker/package.json").version')
           echo "version=$version" >> "$GITHUB_OUTPUT"
@@ -139,10 +151,10 @@ jobs:
         run: node ./scripts/publish-packages.mjs ${{ steps.npm-tag.outputs.tag }}
 
       - name: Create GitHub Release
-        if: steps.unpublished.outputs.has_unpublished == 'true'
+        if: steps.release-pr.outputs.should_publish == 'true'
         env:
           GITHUB_REPOSITORY: ${{ github.repository }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITHUB_SHA: ${{ github.sha }}
+          GITHUB_SHA: ${{ steps.checkout-sha.outputs.sha }}
           PACKAGE_VERSION: ${{ steps.package-version.outputs.version }}
         run: node ./scripts/create-github-release.mjs
