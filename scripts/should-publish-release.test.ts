@@ -15,7 +15,6 @@ beforeEach(function setupTestState() {
   publishContext = createShouldPublishContext();
   pullRequestFetcher = jest.fn(async function fetchAssociatedPullRequests(
     _request: Parameters<PullRequestFetcher>[0],
-    _fetchImpl?: Parameters<PullRequestFetcher>[1],
   ) {
     return [createPullRequest()];
   }) as jest.MockedFunction<PullRequestFetcher>;

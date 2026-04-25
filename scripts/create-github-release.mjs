@@ -7,65 +7,6 @@ import { pathToFileURL } from "node:url";
  */
 
 /**
- * Throws a consistent validation error for missing or invalid input.
- *
- * @param {string} message - Human-readable failure message.
- * @returns {Error} A regular error that can be surfaced in tests or the CLI.
- */
-export function createValidationError(message) {
-  return new Error(message);
-}
-
-/**
- * Returns whether an error represents a not-found GitHub Release response.
- *
- * @param {unknown} error - Error thrown while looking up a GitHub Release.
- * @returns {boolean} True for release-not-found errors.
- */
-export function isReleaseNotFoundError(error) {
-  return error instanceof Error && "status" in error && error.status === 404;
-}
-
-/**
- * Throws a validation error when a required environment variable is missing.
- *
- * @param {NodeJS.ProcessEnv} env - Environment variables to read from.
- * @param {string} name - Required environment variable name.
- * @returns {string} The environment variable value.
- */
-export function requireEnv(env, name) {
-  const value = env[name];
-  if (!value) {
-    throw createValidationError(
-      `Missing required environment variable: ${name}`,
-    );
-  }
-  return value;
-}
-
-/**
- * Reads the GitHub release creation context from environment variables.
- *
- * @param {NodeJS.ProcessEnv} [env=process.env] - Environment variables provided
- *   by the runner. Default is `process.env`
- * @returns {{
- *   repository: string;
- *   token: string;
- *   commitSha: string;
- *   packageVersion: string;
- * }}
- *   Normalized workflow context.
- */
-export function readCreateReleaseContext(env = process.env) {
-  return {
-    repository: requireEnv(env, "GITHUB_REPOSITORY"),
-    token: requireEnv(env, "GITHUB_TOKEN"),
-    commitSha: requireEnv(env, "GITHUB_SHA"),
-    packageVersion: requireEnv(env, "PACKAGE_VERSION"),
-  };
-}
-
-/**
  * Fetches a GitHub Release by tag name.
  *
  * @param {{ owner: string; repo: string; tag: string; token: string }} request
@@ -75,7 +16,7 @@ export function readCreateReleaseContext(env = process.env) {
  *   API request. Default is `fetch`
  * @returns {Promise<GitHubRelease>} The matching GitHub Release payload.
  */
-export async function fetchReleaseByTag(request, fetchImpl = fetch) {
+async function fetchReleaseByTag(request, fetchImpl = fetch) {
   const { owner, repo, tag, token } = request;
   const response = await fetchImpl(
     `https://api.github.com/repos/${owner}/${repo}/releases/tags/${encodeURIComponent(tag)}`,
@@ -89,16 +30,13 @@ export async function fetchReleaseByTag(request, fetchImpl = fetch) {
   );
 
   if (response.status === 404) {
-    throw Object.assign(
-      createValidationError(`GitHub Release ${tag} was not found.`),
-      {
-        status: 404,
-      },
-    );
+    throw Object.assign(new Error(`GitHub Release ${tag} was not found.`), {
+      status: 404,
+    });
   }
 
   if (!response.ok) {
-    throw createValidationError(
+    throw new Error(
       `Could not read GitHub Release ${tag} (HTTP ${response.status}).`,
     );
   }
@@ -123,7 +61,7 @@ export async function fetchReleaseByTag(request, fetchImpl = fetch) {
  *   API request. Default is `fetch`
  * @returns {Promise<GitHubRelease>} The created GitHub Release payload.
  */
-export async function createRelease(request, fetchImpl = fetch) {
+async function createRelease(request, fetchImpl = fetch) {
   const { owner, repo, tag, token, commitSha, prerelease } = request;
   const response = await fetchImpl(
     `https://api.github.com/repos/${owner}/${repo}/releases`,
@@ -147,7 +85,7 @@ export async function createRelease(request, fetchImpl = fetch) {
   );
 
   if (!response.ok) {
-    throw createValidationError(
+    throw new Error(
       `Could not create GitHub Release ${tag} (HTTP ${response.status}).`,
     );
   }
@@ -183,9 +121,7 @@ export async function createRelease(request, fetchImpl = fetch) {
 export async function createGitHubRelease(context, options = {}) {
   const [owner, repo] = context.repository.split("/");
   if (!owner || !repo) {
-    throw createValidationError(
-      `Invalid GITHUB_REPOSITORY value: ${context.repository}`,
-    );
+    throw new Error(`Invalid GITHUB_REPOSITORY value: ${context.repository}`);
   }
 
   const tag = `v${context.packageVersion}`;
@@ -204,7 +140,9 @@ export async function createGitHubRelease(context, options = {}) {
     });
     return { created: false, release: existingRelease, tag };
   } catch (error) {
-    if (!isReleaseNotFoundError(error)) {
+    if (
+      !(error instanceof Error && "status" in error && error.status === 404)
+    ) {
       throw error;
     }
   }
@@ -222,26 +160,36 @@ export async function createGitHubRelease(context, options = {}) {
 }
 
 /**
- * Returns whether this module is being executed directly by Node.js.
- *
- * @returns {boolean} True when the file is the active CLI entrypoint.
- */
-export function isEntrypoint() {
-  const scriptPath = process.argv[1];
-  if (!scriptPath) {
-    return false;
-  }
-  return import.meta.url === pathToFileURL(scriptPath).href;
-}
-
-/**
  * Runs the GitHub Release creation as a CLI program.
  *
  * @returns {Promise<void>} Resolves when the release has been created or
  *   reused.
  */
 export async function main() {
-  const context = readCreateReleaseContext();
+  const repository = process.env.GITHUB_REPOSITORY;
+  const token = process.env.GITHUB_TOKEN;
+  const commitSha = process.env.GITHUB_SHA;
+  const packageVersion = process.env.PACKAGE_VERSION;
+
+  if (!repository) {
+    throw new Error("Missing required environment variable: GITHUB_REPOSITORY");
+  }
+  if (!token) {
+    throw new Error("Missing required environment variable: GITHUB_TOKEN");
+  }
+  if (!commitSha) {
+    throw new Error("Missing required environment variable: GITHUB_SHA");
+  }
+  if (!packageVersion) {
+    throw new Error("Missing required environment variable: PACKAGE_VERSION");
+  }
+
+  const context = {
+    repository,
+    token,
+    commitSha,
+    packageVersion,
+  };
   const result = await createGitHubRelease(context);
   if (result.created) {
     console.log(
@@ -254,7 +202,8 @@ export async function main() {
   }
 }
 
-if (isEntrypoint()) {
+const scriptPath = process.argv[1];
+if (scriptPath && import.meta.url === pathToFileURL(scriptPath).href) {
   main().catch(function handleError(error) {
     if (error instanceof Error) {
       console.error(error.message);

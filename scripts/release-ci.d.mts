@@ -6,25 +6,6 @@ import type {
 } from "./publish-packages.mjs";
 import type { shouldPublishRelease } from "./should-publish-release.mjs";
 
-export function readCurrentCommitSha(
-  execFile?: (
-    command: string,
-    args: string[],
-    options?: object,
-  ) => Buffer | string,
-): string;
-
-export function resolveNpmTag(version: string): "latest" | "next";
-
-export function runRepoCommand(
-  args: string[],
-  execFile?: (
-    command: string,
-    args: string[],
-    options?: object,
-  ) => Buffer | string,
-): void;
-
 export function releaseCi(options?: {
   env?: NodeJS.ProcessEnv;
   execFile?: (
@@ -42,7 +23,5 @@ export function releaseCi(options?: {
   publishedPackages: boolean;
   releaseCreated: boolean;
 }>;
-
-export function isEntrypoint(): boolean;
 
 export function main(): Promise<void>;

@@ -14,29 +14,14 @@ export interface AssociatedPullRequest {
   merged_at: string | null;
 }
 
-export function createValidationError(message: string): Error;
-
-export function requireEnv(env: NodeJS.ProcessEnv, name: string): string;
-
-export function readShouldPublishContext(
-  env?: NodeJS.ProcessEnv,
-): ShouldPublishContext;
-
-export function fetchAssociatedPullRequests(
-  request: {
+export function shouldPublishRelease(
+  context: ShouldPublishContext,
+  pullRequestFetcher?: (request: {
     owner: string;
     repo: string;
     commitSha: string;
     token: string;
-  },
-  fetchImpl?: typeof fetch,
-): Promise<AssociatedPullRequest[]>;
-
-export function shouldPublishRelease(
-  context: ShouldPublishContext,
-  pullRequestFetcher?: typeof fetchAssociatedPullRequests,
+  }) => Promise<AssociatedPullRequest[]>,
 ): Promise<boolean>;
-
-export function isEntrypoint(): boolean;
 
 export function main(): Promise<void>;

@@ -19,13 +19,11 @@ beforeEach(function setupTestState() {
   releaseContext = createReleaseContext();
   fetchRelease = jest.fn(async function fetchExistingRelease(
     _request: Parameters<NonNullable<FetchRelease>>[0],
-    _fetchImpl?: Parameters<NonNullable<FetchRelease>>[1],
   ) {
     return createReleasePayload();
   }) as jest.MockedFunction<NonNullable<FetchRelease>>;
   createRelease = jest.fn(async function createNewRelease(
     _request: Parameters<NonNullable<CreateRelease>>[0],
-    _fetchImpl?: Parameters<NonNullable<CreateRelease>>[1],
   ) {
     return createReleasePayload({
       html_url:

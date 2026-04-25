@@ -10,59 +10,6 @@ import { pathToFileURL } from "node:url";
  */
 
 /**
- * Throws a consistent validation error for missing or invalid input.
- *
- * @param {string} message - Human-readable failure message.
- * @returns {Error} A regular error that can be surfaced in tests or the CLI.
- */
-export function createValidationError(message) {
-  return new Error(message);
-}
-
-/**
- * Throws a validation error when a required environment variable is missing.
- *
- * @param {NodeJS.ProcessEnv} env - Environment variables to read from.
- * @param {string} name - Required environment variable name.
- * @returns {string} The environment variable value.
- */
-export function requireEnv(env, name) {
-  const value = env[name];
-  if (!value) {
-    throw createValidationError(
-      `Missing required environment variable: ${name}`,
-    );
-  }
-  return value;
-}
-
-/**
- * Reads the release-merge detection context from environment variables.
- *
- * @param {NodeJS.ProcessEnv} [env=process.env] - Environment variables provided
- *   by the runner. Default is `process.env`
- * @returns {{
- *   repository: string;
- *   token: string;
- *   commitSha: string;
- *   expectedHeadBranch: string;
- *   expectedAuthor: string;
- *   expectedBaseBranch: string;
- * }}
- *   Normalized workflow context.
- */
-export function readShouldPublishContext(env = process.env) {
-  return {
-    repository: requireEnv(env, "GITHUB_REPOSITORY"),
-    token: requireEnv(env, "GITHUB_TOKEN"),
-    commitSha: requireEnv(env, "GITHUB_SHA"),
-    expectedHeadBranch: env.EXPECTED_PR_BRANCH || "changesets-release/main",
-    expectedAuthor: env.EXPECTED_PR_AUTHOR || "github-actions[bot]",
-    expectedBaseBranch: env.EXPECTED_BASE_BRANCH || "main",
-  };
-}
-
-/**
  * Fetches pull requests associated with a commit.
  *
  * @param {{
@@ -78,7 +25,7 @@ export function readShouldPublishContext(env = process.env) {
  * @returns {Promise<AssociatedPullRequest[]>} Pull requests associated with the
  *   commit.
  */
-export async function fetchAssociatedPullRequests(request, fetchImpl = fetch) {
+async function fetchAssociatedPullRequests(request, fetchImpl = fetch) {
   const { owner, repo, commitSha, token } = request;
   const response = await fetchImpl(
     `https://api.github.com/repos/${owner}/${repo}/commits/${encodeURIComponent(commitSha)}/pulls`,
@@ -92,7 +39,7 @@ export async function fetchAssociatedPullRequests(request, fetchImpl = fetch) {
   );
 
   if (!response.ok) {
-    throw createValidationError(
+    throw new Error(
       `Could not read pull requests associated with commit ${commitSha} (HTTP ${response.status}).`,
     );
   }
@@ -125,9 +72,7 @@ export async function shouldPublishRelease(
 ) {
   const [owner, repo] = context.repository.split("/");
   if (!owner || !repo) {
-    throw createValidationError(
-      `Invalid GITHUB_REPOSITORY value: ${context.repository}`,
-    );
+    throw new Error(`Invalid GITHUB_REPOSITORY value: ${context.repository}`);
   }
 
   const pullRequests = await pullRequestFetcher({
@@ -148,30 +93,40 @@ export async function shouldPublishRelease(
 }
 
 /**
- * Returns whether this module is being executed directly by Node.js.
- *
- * @returns {boolean} True when the file is the active CLI entrypoint.
- */
-export function isEntrypoint() {
-  const scriptPath = process.argv[1];
-  if (!scriptPath) {
-    return false;
-  }
-  return import.meta.url === pathToFileURL(scriptPath).href;
-}
-
-/**
  * Runs the release-merge check as a CLI program.
  *
  * @returns {Promise<void>} Resolves when the result has been printed.
  */
 export async function main() {
-  const context = readShouldPublishContext();
+  const repository = process.env.GITHUB_REPOSITORY;
+  const token = process.env.GITHUB_TOKEN;
+  const commitSha = process.env.GITHUB_SHA;
+
+  if (!repository) {
+    throw new Error("Missing required environment variable: GITHUB_REPOSITORY");
+  }
+  if (!token) {
+    throw new Error("Missing required environment variable: GITHUB_TOKEN");
+  }
+  if (!commitSha) {
+    throw new Error("Missing required environment variable: GITHUB_SHA");
+  }
+
+  const context = {
+    repository,
+    token,
+    commitSha,
+    expectedHeadBranch:
+      process.env.EXPECTED_PR_BRANCH || "changesets-release/main",
+    expectedAuthor: process.env.EXPECTED_PR_AUTHOR || "github-actions[bot]",
+    expectedBaseBranch: process.env.EXPECTED_BASE_BRANCH || "main",
+  };
   const shouldPublish = await shouldPublishRelease(context);
   console.log(shouldPublish ? "true" : "false");
 }
 
-if (isEntrypoint()) {
+const scriptPath = process.argv[1];
+if (scriptPath && import.meta.url === pathToFileURL(scriptPath).href) {
   main().catch(function handleError(error) {
     if (error instanceof Error) {
       console.error(error.message);

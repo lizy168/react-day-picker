@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import process from "node:process";
 import { pathToFileURL } from "node:url";
-import { createGitHubRelease, requireEnv } from "./create-github-release.mjs";
+import { createGitHubRelease } from "./create-github-release.mjs";
 import {
   getUnpublishedPackages,
   publishPackages,
@@ -22,48 +22,6 @@ const validationCommands = [
   ["pack:dry-run"],
   ["test:build"],
 ];
-
-/**
- * Reads the current checked-out commit SHA.
- *
- * @param {typeof execFileSync} [execFile=execFileSync] - Command runner.
- *   Default is `execFileSync`
- * @returns {string} The current `HEAD` commit SHA.
- */
-export function readCurrentCommitSha(execFile = execFileSync) {
-  return String(
-    execFile("git", ["rev-parse", "HEAD"], {
-      cwd: repoRoot,
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "pipe"],
-    }),
-  ).trim();
-}
-
-/**
- * Resolves the npm dist-tag for the current package version.
- *
- * @param {string} version - Package version from `package.json`.
- * @returns {"latest" | "next"} The npm dist-tag to publish under.
- */
-export function resolveNpmTag(version) {
-  return version.includes("-next") ? "next" : "latest";
-}
-
-/**
- * Runs a repo-level pnpm command with inherited stdio.
- *
- * @param {string[]} args - Pnpm arguments to execute.
- * @param {typeof execFileSync} [execFile=execFileSync] - Command runner.
- *   Default is `execFileSync`
- * @returns {void}
- */
-export function runRepoCommand(args, execFile = execFileSync) {
-  execFile("pnpm", args, {
-    cwd: repoRoot,
-    stdio: "inherit",
-  });
-}
 
 /**
  * Runs the release automation for a merged Changesets release PR.
@@ -104,9 +62,22 @@ export async function releaseCi(options = {}) {
     createRelease = createGitHubRelease,
   } = options;
 
-  const repository = requireEnv(env, "GITHUB_REPOSITORY");
-  const token = requireEnv(env, "GITHUB_TOKEN");
-  const commitSha = readCurrentCommitSha(execFile);
+  const repository = env.GITHUB_REPOSITORY;
+  const token = env.GITHUB_TOKEN;
+  if (!repository) {
+    throw new Error("Missing required environment variable: GITHUB_REPOSITORY");
+  }
+  if (!token) {
+    throw new Error("Missing required environment variable: GITHUB_TOKEN");
+  }
+
+  const commitSha = String(
+    execFile("git", ["rev-parse", "HEAD"], {
+      cwd: repoRoot,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+    }),
+  ).trim();
   const packageInfo = readPackage(mainPackageDir);
 
   const publishAllowed = await shouldPublish({
@@ -137,10 +108,13 @@ export async function releaseCi(options = {}) {
 
   if (unpublishedPackages.length > 0) {
     for (const commandArgs of validationCommands) {
-      runRepoCommand(commandArgs, execFile);
+      execFile("pnpm", commandArgs, {
+        cwd: repoRoot,
+        stdio: "inherit",
+      });
     }
 
-    const npmTag = resolveNpmTag(packageInfo.version);
+    const npmTag = packageInfo.version.includes("-next") ? "next" : "latest";
     console.log(`Publishing ${packageInfo.version} with dist-tag ${npmTag}.`);
     publish(npmTag, { execFile, readPackage });
     publishedPackages = true;
@@ -160,19 +134,6 @@ export async function releaseCi(options = {}) {
     publishedPackages,
     releaseCreated: releaseResult.created,
   };
-}
-
-/**
- * Returns whether this module is being executed directly by Node.js.
- *
- * @returns {boolean} True when the file is the active CLI entrypoint.
- */
-export function isEntrypoint() {
-  const scriptPath = process.argv[1];
-  if (!scriptPath) {
-    return false;
-  }
-  return import.meta.url === pathToFileURL(scriptPath).href;
 }
 
 /**
@@ -197,7 +158,8 @@ export async function main() {
   }
 }
 
-if (isEntrypoint()) {
+const scriptPath = process.argv[1];
+if (scriptPath && import.meta.url === pathToFileURL(scriptPath).href) {
   main().catch(function handleError(error) {
     if (error instanceof Error) {
       console.error(error.message);
