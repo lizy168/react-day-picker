@@ -1,5 +1,3 @@
-export {};
-
 type CreateGitHubReleaseModule = typeof import("./create-github-release.mjs");
 type FetchRelease = NonNullable<
   Parameters<CreateGitHubReleaseModule["createGitHubRelease"]>[1]

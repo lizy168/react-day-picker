@@ -1,5 +1,3 @@
-export {};
-
 type ShouldPublishModule = typeof import("./should-publish-release.mjs");
 type PullRequestFetcher = NonNullable<
   Parameters<ShouldPublishModule["shouldPublishRelease"]>[1]
