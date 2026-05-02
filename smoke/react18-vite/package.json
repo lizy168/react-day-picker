@@ -1,0 +1,20 @@
+{
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1 --port 5188",
+    "typecheck": "tsc --noEmit",
+    "build": "tsc --noEmit && vite build"
+  },
+  "dependencies": {
+    "@types/react": "18.3.28",
+    "@types/react-dom": "18.3.7",
+    "date-fns": "2.30.0",
+    "react": "18.2.0",
+    "react-day-picker": "file:../react-day-picker-8.10.2.tgz",
+    "react-dom": "18.2.0",
+    "typescript": "5.9.3",
+    "vite": "7.3.2"
+  },
+  "devDependencies": {}
+}
